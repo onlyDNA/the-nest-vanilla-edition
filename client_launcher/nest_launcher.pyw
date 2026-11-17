@@ -267,6 +267,14 @@ class NestLauncher:
                 self.root.iconphoto(True, tb_64, tb_full)
             except Exception:
                 pass
+        hdr_path = os.path.join(RESOURCE_DIR, "header_icon.png")
+        if os.path.exists(hdr_path):
+            try:
+                small = tk.PhotoImage(file=hdr_path)
+                self._icons = [small, small]
+                return
+            except Exception:
+                pass
         png_path = os.path.join(RESOURCE_DIR, "nest_logo.png")
         if os.path.exists(png_path):
             try:
