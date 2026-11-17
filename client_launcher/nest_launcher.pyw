@@ -803,7 +803,13 @@ class NestLauncher:
         ] + [str(x) for x in nf_json.get("arguments", {}).get("game", []) if isinstance(x, str)]
 
         self._set_status(f"Launching as {self.state['nick']}...", OK_GREEN, 100)
-        subprocess.Popen([java_exe] + jvm_args + [nf_json["mainClass"]] + game_args, cwd=game_dir)
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        subprocess.Popen(
+            [java_exe] + jvm_args + [nf_json["mainClass"]] + game_args,
+            cwd=game_dir,
+            close_fds=True,
+            creationflags=flags,
+        )
         self._safe_ui(lambda: self.root.after(1200, self.root.destroy))
 
 
