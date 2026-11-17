@@ -6,6 +6,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --icon "%~dp0client_launcher\panel_icon.ico" ^
   --add-data "%~dp0client_launcher\launcher_config.json;." ^
   --add-data "%~dp0client_launcher\nest_logo.png;." ^
+  --add-data "%~dp0client_launcher\taskbar_icon.png;." ^
   --add-data "%~dp0client_launcher\panel_icon.ico;." ^
   --distpath "%~dp0release" ^
   --workpath "%~dp0scratch\pyi_build" ^

@@ -258,13 +258,21 @@ class NestLauncher:
                 self.root.iconbitmap(ico_path)
             except Exception:
                 pass
+        tb_path = os.path.join(RESOURCE_DIR, "taskbar_icon.png")
+        if os.path.exists(tb_path):
+            try:
+                tb_full = tk.PhotoImage(file=tb_path)
+                tb_64 = tb_full.subsample(4, 4)
+                self._tb_icons = [tb_full, tb_64]
+                self.root.iconphoto(True, tb_64, tb_full)
+            except Exception:
+                pass
         png_path = os.path.join(RESOURCE_DIR, "nest_logo.png")
         if os.path.exists(png_path):
             try:
                 full = tk.PhotoImage(file=png_path)
                 small = full.subsample(2, 2)
                 self._icons = [full, small]
-                self.root.iconphoto(True, full)
             except Exception:
                 pass
 
