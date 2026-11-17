@@ -21,3 +21,7 @@ desktop.ini
 # Sensitive auth / local client state
 client_launcher/launcher_state.json
 client_launcher/.test_check*
+build/
+dist/
+release/
+*.spec

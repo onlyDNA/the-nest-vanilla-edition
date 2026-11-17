@@ -9,9 +9,10 @@ import queue
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 import urllib.parse
 import urllib.request
 import uuid
@@ -23,14 +24,16 @@ try:
 except Exception:
     pass
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(APP_DIR, "launcher_config.json")
-STATE_PATH = os.path.join(APP_DIR, "launcher_state.json")
+RESOURCE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(RESOURCE_DIR, "launcher_config.json")
+
+DEFAULT_INSTALL_ROOT = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "TheNestVanilla")
+STATE_DIR = DEFAULT_INSTALL_ROOT
+STATE_PATH = os.path.join(STATE_DIR, "launcher_state.json")
 
 CF_INSTALL_DIR = r"C:\Users\katen\curseforge\minecraft\Install"
 CF_JAVA_25 = os.path.join(CF_INSTALL_DIR, "java", "java-runtime-epsilon", "bin", "javaw.exe")
 
-DEFAULT_RUNTIME_ROOT = os.path.join(os.environ.get("LOCALAPPDATA", APP_DIR), "TheNestVanilla")
 MOJANG_PROFILE_URL = "https://api.mojang.com/users/profiles/minecraft/{name}"
 HEAD_AVATAR_URL = "https://mc-heads.net/avatar/{ident}/36"
 MC_VERSION_MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
@@ -80,6 +83,7 @@ def load_json(path: str, default: dict) -> dict:
 
 
 def save_json(path: str, data: dict) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -173,10 +177,12 @@ class NestLauncher:
                 "nick": "",
                 "uuid": "",
                 "ram_gb": self.cfg.get("default_ram_gb", 8),
-                "game_dir": os.path.join(DEFAULT_RUNTIME_ROOT, "instance"),
+                "install_root": DEFAULT_INSTALL_ROOT,
             },
         )
-        self.runtime_dir = os.path.join(DEFAULT_RUNTIME_ROOT, "mc_install")
+        if not self.state.get("install_root"):
+            self.state["install_root"] = DEFAULT_INSTALL_ROOT
+
         self.busy = False
         self.ui_queue: queue.Queue = queue.Queue()
         self._icons: list[tk.PhotoImage] = []
@@ -187,7 +193,7 @@ class NestLauncher:
 
         self.root.title(self.cfg.get("pack_name", "The Nest Vanilla Edition"))
         dpi_scale = max(1.0, self.root.winfo_fpixels("1i") / 96.0)
-        self.root.geometry(f"{int(500 * dpi_scale)}x{int(380 * dpi_scale)}")
+        self.root.geometry(f"{int(520 * dpi_scale)}x{int(430 * dpi_scale)}")
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
 
@@ -200,6 +206,18 @@ class NestLauncher:
         initial_nick = (self.state.get("nick") or "").strip()
         if RE_VALID_NICK.match(initial_nick):
             self._trigger_lookup(initial_nick)
+
+    @property
+    def install_root(self) -> str:
+        return self.state["install_root"]
+
+    @property
+    def game_dir(self) -> str:
+        return os.path.join(self.install_root, "instance")
+
+    @property
+    def runtime_dir(self) -> str:
+        return os.path.join(self.install_root, "mc_install")
 
     def _setup_styles(self) -> None:
         style = ttk.Style(self.root)
@@ -234,13 +252,13 @@ class NestLauncher:
         self.root.option_add("*TCombobox*Listbox.selectForeground", TEXT)
 
     def _load_icons(self) -> None:
-        ico_path = os.path.join(APP_DIR, "panel_icon.ico")
+        ico_path = os.path.join(RESOURCE_DIR, "panel_icon.ico")
         if os.path.exists(ico_path):
             try:
                 self.root.iconbitmap(ico_path)
             except Exception:
                 pass
-        png_path = os.path.join(APP_DIR, "nest_logo.png")
+        png_path = os.path.join(RESOURCE_DIR, "nest_logo.png")
         if os.path.exists(png_path):
             try:
                 full = tk.PhotoImage(file=png_path)
@@ -252,7 +270,7 @@ class NestLauncher:
 
     def _build_ui(self) -> None:
         # 1. Clean Minimal Header
-        hdr = tk.Frame(self.root, bg=BG, padx=24, pady=18)
+        hdr = tk.Frame(self.root, bg=BG, padx=24, pady=16)
         hdr.pack(fill="x")
         if len(self._icons) >= 2:
             tk.Label(hdr, image=self._icons[1], bg=BG).pack(side="left", padx=(0, 12))
@@ -275,7 +293,7 @@ class NestLauncher:
         )
         self.ver_lbl.pack(anchor="w", pady=(1, 0))
 
-        # 2. Player Nickname + Auto Skin Card (no extra button)
+        # 2. Player Nickname + Auto Skin Card
         acct = tk.Frame(self.root, bg=SURFACE, highlightbackground=BORDER, highlightthickness=1, padx=14, pady=12)
         acct.pack(fill="x", padx=24, pady=(0, 10))
 
@@ -325,8 +343,28 @@ class NestLauncher:
         )
         self.acct_status.pack(fill="x")
 
-        # 3. Compact Settings Strip
-        opts = tk.Frame(self.root, bg=BG, padx=24, pady=4)
+        # 3. Install Folder Card (HDD/SSD selectable)
+        loc = tk.Frame(self.root, bg=SURFACE, highlightbackground=BORDER, highlightthickness=1, padx=14, pady=9)
+        loc.pack(fill="x", padx=24, pady=(0, 10))
+
+        loc_top = tk.Frame(loc, bg=SURFACE)
+        loc_top.pack(fill="x")
+        tk.Label(loc_top, text="MODPACK INSTALL FOLDER", font=("Segoe UI", 7, "bold"), bg=SURFACE, fg=MUTED).pack(side="left")
+        make_button(loc_top, "Open", SURFACE_ALT, "#3a2d21", TEXT, self._open_game_dir, 8, 2, 8).pack(side="right")
+        make_button(loc_top, "Change...", SURFACE_ALT, "#3a2d21", ACCENT, self._choose_folder, 8, 2, 8).pack(side="right", padx=(0, 6))
+
+        self.path_lbl = tk.Label(
+            loc,
+            text=self.install_root,
+            font=("Cascadia Mono", 8),
+            bg=SURFACE,
+            fg=TEXT,
+            anchor="w",
+        )
+        self.path_lbl.pack(fill="x", pady=(4, 0))
+
+        # 4. Compact Settings Strip
+        opts = tk.Frame(self.root, bg=BG, padx=24, pady=2)
         opts.pack(fill="x")
 
         tk.Label(opts, text="Memory", font=("Segoe UI", 8, "bold"), bg=BG, fg=MUTED).pack(side="left")
@@ -341,12 +379,11 @@ class NestLauncher:
             style="Nest.TCombobox",
         ).pack(side="left", padx=(8, 0))
 
-        make_button(opts, "Folder", SURFACE, SURFACE_ALT, TEXT, self._open_game_dir, 10, 4, 8).pack(side="right")
-        make_button(opts, "Check Updates", SURFACE, SURFACE_ALT, ACCENT, self._check_only, 10, 4, 8).pack(side="right", padx=(0, 6))
+        make_button(opts, "Check Updates", SURFACE, SURFACE_ALT, ACCENT, self._check_only, 10, 4, 8).pack(side="right")
 
-        # 4. Bottom Play Button + Progress
+        # 5. Bottom Play Button + Progress
         bottom = tk.Frame(self.root, bg=BG, padx=24)
-        bottom.pack(side="bottom", fill="x", pady=(0, 20))
+        bottom.pack(side="bottom", fill="x", pady=(0, 18))
 
         self.status_lbl = tk.Label(bottom, text="Ready.", font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w")
         self.status_lbl.pack(fill="x", pady=(0, 5))
@@ -378,6 +415,20 @@ class NestLauncher:
             if pct is not None:
                 self.progress["value"] = max(0, min(100, pct))
         self._safe_ui(_apply)
+
+    def _choose_folder(self) -> None:
+        if self.busy:
+            return
+        picked = filedialog.askdirectory(initialdir=self.install_root, title="Choose Modpack Install Folder (e.g. D:\\Games\\TheNest)")
+        if not picked:
+            return
+        chosen = os.path.normpath(picked)
+        if os.path.basename(chosen).lower() != "thenestvanilla":
+            chosen = os.path.join(chosen, "TheNestVanilla")
+        self.state["install_root"] = chosen
+        save_json(STATE_PATH, self.state)
+        self.path_lbl.configure(text=chosen)
+        self._set_status(f"Install path set to {chosen}", ACCENT, 0)
 
     def _on_nick_changed(self, *_args) -> None:
         if self._debounce_id:
@@ -444,9 +495,8 @@ class NestLauncher:
         self._safe_ui(_update_ui)
 
     def _open_game_dir(self) -> None:
-        gdir = self.state["game_dir"]
-        os.makedirs(gdir, exist_ok=True)
-        os.startfile(gdir)
+        os.makedirs(self.game_dir, exist_ok=True)
+        os.startfile(self.game_dir)
 
     def _check_only(self) -> None:
         if self.busy:
@@ -482,16 +532,18 @@ class NestLauncher:
             else:
                 self._set_status("Modpack is up to date.", OK_GREEN, 100)
         except Exception as exc:
-            self._set_status(f"Error: {exc}", ERR_RED)
-            self._safe_ui(lambda: messagebox.showerror("Launcher Error", str(exc)))
-        finally:
             self.busy = False
+            self._set_status(f"Error: {exc}", ERR_RED)
             self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
+            self._safe_ui(lambda msg=str(exc): messagebox.showerror("Launcher Error", msg))
+            return
+        self.busy = False
+        self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
 
     def _sync_from_github(self) -> None:
         manifest_url = self.cfg.get("manifest_url", "").strip()
         files_base = self.cfg.get("files_base_url", "").strip().rstrip("/")
-        game_dir = self.state["game_dir"]
+        game_dir = self.game_dir
         os.makedirs(game_dir, exist_ok=True)
 
         if not manifest_url or "CHANGE_ME_" in manifest_url:
@@ -584,21 +636,22 @@ class NestLauncher:
     def _ensure_java25(self) -> str:
         if os.path.exists(CF_JAVA_25):
             return CF_JAVA_25
-        local_javaw = os.path.join(DEFAULT_RUNTIME_ROOT, "java25", "bin", "javaw.exe")
+        local_javaw = os.path.join(self.install_root, "java25", "bin", "javaw.exe")
         if os.path.exists(local_javaw):
             return local_javaw
 
         self._set_status("Downloading Java 25 runtime (first setup)...", TEXT, 68)
-        zip_path = os.path.join(DEFAULT_RUNTIME_ROOT, "java25.zip")
+        os.makedirs(self.install_root, exist_ok=True)
+        zip_path = os.path.join(self.install_root, "java25.zip")
         download_file(ADOPTIUM_JRE25_API, zip_path)
-        extract_tmp = os.path.join(DEFAULT_RUNTIME_ROOT, "java25_tmp")
+        extract_tmp = os.path.join(self.install_root, "java25_tmp")
         if os.path.exists(extract_tmp):
             shutil.rmtree(extract_tmp)
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(extract_tmp)
         os.remove(zip_path)
         top_dirs = [d for d in os.listdir(extract_tmp) if os.path.isdir(os.path.join(extract_tmp, d))]
-        target = os.path.join(DEFAULT_RUNTIME_ROOT, "java25")
+        target = os.path.join(self.install_root, "java25")
         if os.path.exists(target):
             shutil.rmtree(target)
         shutil.move(os.path.join(extract_tmp, top_dirs[0]), target)
@@ -650,7 +703,7 @@ class NestLauncher:
     def _launch_game(self, java_exe: str, install_dir: str) -> None:
         mc_ver = self.cfg.get("mc_version", "26.3")
         nf_ver = self.cfg.get("neoforge_version", "26.3.0.103")
-        game_dir = self.state["game_dir"]
+        game_dir = self.game_dir
         ram_gb = int(self.state.get("ram_gb", 8))
 
         with open(os.path.join(install_dir, "versions", mc_ver, f"{mc_ver}.json"), "r", encoding="utf-8") as f:

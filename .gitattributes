@@ -1,0 +1,3 @@
+# Prevent Git from converting CRLF/LF inside packaged modpack files (keeps SHA256 hashes exact)
+pack/** -text
+overrides/** -text
