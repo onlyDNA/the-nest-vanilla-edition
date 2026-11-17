@@ -13,6 +13,7 @@ MANIFEST_PATH = os.path.join(WORKSPACE_DIR, "pack-manifest.json")
 LAUNCHER_CFG = os.path.join(WORKSPACE_DIR, "client_launcher", "launcher_config.json")
 
 MANAGED_DIRS = ("mods", "config", "resourcepacks", "defaultconfigs")
+ROOT_FILES = ("servers.dat",)
 SKIP_FILES = {
     "defaultoptions-local.toml",
     "inventoryessentials-local.toml",
@@ -72,6 +73,19 @@ def sync_pack() -> dict:
                     "sha256": sha256_file(dst_file),
                     "size": size,
                 }
+
+    for fname in ROOT_FILES:
+        src_file = os.path.join(LIVE_INSTANCE, fname)
+        if not os.path.isfile(src_file):
+            continue
+        dst_file = os.path.join(PACK_DIR, fname)
+        shutil.copy2(src_file, dst_file)
+        size = os.path.getsize(dst_file)
+        total_bytes += size
+        files_meta[fname] = {
+            "sha256": sha256_file(dst_file),
+            "size": size,
+        }
 
     manifest = {
         "pack_name": cfg.get("pack_name", "The Nest Vanilla Edition"),

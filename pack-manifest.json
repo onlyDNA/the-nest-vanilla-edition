@@ -1,7 +1,7 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "generated_at": "2026-11-17T08:11:25Z",
+  "generated_at": "2026-11-17T08:59:12Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -11,8 +11,8 @@
     "resourcepacks",
     "defaultconfigs"
   ],
-  "total_files": 470,
-  "total_bytes": 458822605,
+  "total_files": 471,
+  "total_bytes": 458844169,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -271,8 +271,8 @@
       "size": 3214
     },
     "config/fancymenu/customization/the_nest_title_screen.txt": {
-      "sha256": "a2378bfd312651234dbefba022da321a26eb0b2755cd24a4eec85785c9344c02",
-      "size": 65071
+      "sha256": "013205e849c2eb7aaba5ad607f0e57600920c7fa8c2af66211ebd504c94b66fb",
+      "size": 68226
     },
     "config/fancymenu/layout_editor/widgets/element_layer_control.lewidget": {
       "sha256": "051d700ea7ff1bd626063d60f9a9cd65a0af1fed5903706d1e70fce20bcb2495",
@@ -1893,6 +1893,10 @@
     "resourcepacks/\u00a7eExtended_Illumina_26.2.x.zip": {
       "sha256": "3df09aa897d55a8aebb3db493c5d9b130ded4a3a444f0ce8a4b66dca7e88ddb2",
       "size": 9073
+    },
+    "servers.dat": {
+      "sha256": "630ffaadefcee5cd727a394e9be20e12224a2b89a98bfe98fef5766b9a71ae66",
+      "size": 18409
     }
   }
 }

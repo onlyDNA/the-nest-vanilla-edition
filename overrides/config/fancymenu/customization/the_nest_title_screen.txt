@@ -397,9 +397,9 @@ element {
   sticky_anchor = true
   anchor_point = mid-centered
   x = 0
-  y = 50
+  y = 46
   width = 218
-  height = 108
+  height = 88
   stay_on_screen = true
   element_loading_requirement_container_identifier = 9e1f078b-9232-447f-a7c0-4bfb0a8c9b5a-1794846827738
   [loading_requirement_container_meta:9e1f078b-9232-447f-a7c0-4bfb0a8c9b5a-1794846827738] = [groups:][instances:]
@@ -460,7 +460,7 @@ element {
   sticky_anchor = true
   anchor_point = mid-centered
   x = 0
-  y = -66
+  y = -58
   width = 166
   height = 118
   stay_on_screen = true
@@ -596,6 +596,97 @@ element {
 }
 
 element {
+  button_element_executable_block_identifier = nest-join-btn-block-0001
+  [executable_action_instance:nest-join-btn-act-0001][action_type:joinserver] = 192.168.1.77:25565
+  [executable_block:nest-join-btn-block-0001][type:generic] = [executables:nest-join-btn-act-0001;]
+  backgroundnormal = [source:local]config/fancymenu/assets/btn_normal.png
+  backgroundhovered = [source:local]config/fancymenu/assets/btn_hover.png
+  background_texture_inactive = [source:local]config/fancymenu/assets/btn_inactive.png
+  underline_label_on_hover = false
+  transparent_background = false
+  restartbackgroundanimations = true
+  nine_slice_custom_background = true
+  label = Join The Nest
+  navigatable = true
+  widget_active_state_requirement_container_identifier = nest-join-btn-req-0001
+  [loading_requirement_container_meta:nest-join-btn-req-0001] = [groups:][instances:]
+  is_template = false
+  template_apply_width = false
+  template_apply_height = false
+  template_apply_posx = false
+  template_apply_posy = false
+  template_apply_opacity = false
+  template_apply_visibility = false
+  template_apply_label = false
+  template_share_with = buttons
+  nine_slice_slider_handle = false
+  element_type = custom_button
+  instance_identifier = nest-title-join-button-0001
+  appearance_delay = no_delay
+  disappearance_delay = no_delay
+  fade_in_v2 = first_time
+  fade_out = no_fading
+  auto_sizing = false
+  auto_sizing_base_screen_width = 1920
+  auto_sizing_base_screen_height = 1080
+  auto_sizing_base_gui_scale = 3
+  sticky_anchor = true
+  anchor_point = mid-centered
+  x = 0
+  y = 21
+  width = 200
+  height = 22
+  stay_on_screen = true
+  element_loading_requirement_container_identifier = nest-join-btn-load-0001
+  [loading_requirement_container_meta:nest-join-btn-load-0001] = [groups:][instances:]
+  enable_parallax = false
+  invert_parallax = false
+  animated_offset_x = 0
+  animated_offset_y = 0
+  load_once_per_session = false
+  layer_hidden_in_editor = false
+  advanced_rotation_mode = false
+  advanced_vertical_tilt_mode = false
+  advanced_horizontal_tilt_mode = false
+  should_be_affected_by_decoration_overlays = true
+  in_editor_color = #FFC800FF
+  advanced_posx = -2147483648
+  advanced_posy = -2147483648
+  advanced_width = -2147483648
+  advanced_height = -2147483648
+  stretch_x = false
+  stretch_y = false
+  appearance_delay_seconds = 1.0
+  disappearance_delay_seconds = 1.0
+  fade_in_speed = 2.0
+  fade_out_speed = 1.0
+  base_opacity = 1.0
+  parallax_intensity_x = 0.5
+  parallax_intensity_y = 0.5
+  rotation_degrees = 0.0
+  advanced_rotation_degrees = 0.0
+  vertical_tilt_degrees = 0.0
+  advanced_vertical_tilt_degrees = 0.0
+  horizontal_tilt_degrees = 0.0
+  advanced_horizontal_tilt_degrees = 0.0
+  click_sound_volume = 1.0
+  click_sound_channel = master
+  hover_sound_volume = 1.0
+  hover_sound_channel = master
+  label_base_color = #FFF3DA
+  label_hover_color = #FFD77A
+  label_scale = 1.0
+  label_shadow = true
+  nine_slice_border_x = 8
+  nine_slice_border_y = 6
+  nine_slice_slider_handle_border_x = 5
+  nine_slice_slider_handle_border_y = 5
+  unhover_sound_volume = 1.0
+  unhover_sound_channel = master
+  automated_button_clicks = 0
+}
+
+element {
   button_element_executable_block_identifier = nest-mods-btn-block-0001
   [executable_action_instance:nest-mods-btn-act-0001][action_type:mimicbutton] = title_screen:titlescreen_mods_button
   [executable_block:nest-mods-btn-block-0001][type:generic] = [executables:nest-mods-btn-act-0001;]
@@ -632,9 +723,9 @@ element {
   auto_sizing_base_gui_scale = 3
   sticky_anchor = true
   anchor_point = mid-centered
-  x = -58
-  y = 63
-  width = 84
+  x = -51
+  y = 46
+  width = 98
   height = 22
   stay_on_screen = true
   element_loading_requirement_container_identifier = nest-mods-btn-load-0001
@@ -973,19 +1064,19 @@ vanilla_button {
   instance_identifier = mc_titlescreen_singleplayer_button
   appearance_delay = no_delay
   disappearance_delay = no_delay
-  fade_in_v2 = first_time
+  fade_in_v2 = no_fading
   fade_out = no_fading
   auto_sizing = false
   auto_sizing_base_screen_width = 0
   auto_sizing_base_screen_height = 0
   auto_sizing_base_gui_scale = 0
-  sticky_anchor = true
-  anchor_point = mid-centered
-  x = 0
-  y = 13
-  width = 200
-  height = 22
-  stay_on_screen = true
+  sticky_anchor = false
+  anchor_point = top-left
+  x = -5000
+  y = -5000
+  width = 1
+  height = 1
+  stay_on_screen = false
   element_loading_requirement_container_identifier = 0a388e06-3211-4516-b6da-7467143ae14c-1794846827738
   [loading_requirement_container_meta:0a388e06-3211-4516-b6da-7467143ae14c-1794846827738] = [groups:][instances:]
   enable_parallax = false
@@ -1033,7 +1124,7 @@ vanilla_button {
   unhover_sound_volume = 1.0
   unhover_sound_channel = master
   automated_button_clicks = 0
-  is_hidden = false
+  is_hidden = true
 }
 
 vanilla_button {
@@ -1233,19 +1324,19 @@ vanilla_button {
   instance_identifier = 478354
   appearance_delay = no_delay
   disappearance_delay = no_delay
-  fade_in_v2 = first_time
+  fade_in_v2 = no_fading
   fade_out = no_fading
   auto_sizing = false
   auto_sizing_base_screen_width = 1920
   auto_sizing_base_screen_height = 1080
   auto_sizing_base_gui_scale = 3
-  sticky_anchor = true
-  anchor_point = mid-centered
-  x = 0
-  y = 63
-  width = 22
-  height = 22
-  stay_on_screen = true
+  sticky_anchor = false
+  anchor_point = top-left
+  x = -5000
+  y = -5000
+  width = 1
+  height = 1
+  stay_on_screen = false
   element_loading_requirement_container_identifier = 542b1802-5b98-4ce7-8194-a338b28d6e95-1794846827740
   [loading_requirement_container_meta:542b1802-5b98-4ce7-8194-a338b28d6e95-1794846827740] = [groups:][instances:]
   enable_parallax = false
@@ -1291,7 +1382,7 @@ vanilla_button {
   unhover_sound_volume = 1.0
   unhover_sound_channel = master
   automated_button_clicks = 0
-  is_hidden = false
+  is_hidden = true
 }
 
 vanilla_button {
@@ -1417,7 +1508,7 @@ vanilla_button {
   sticky_anchor = true
   anchor_point = mid-centered
   x = 89
-  y = 88
+  y = 71
   width = 22
   height = 22
   stay_on_screen = true
@@ -1590,7 +1681,7 @@ vanilla_button {
   sticky_anchor = true
   anchor_point = mid-centered
   x = 0
-  y = 88
+  y = 71
   width = 148
   height = 22
   stay_on_screen = true
@@ -1679,9 +1770,9 @@ vanilla_button {
   auto_sizing_base_gui_scale = 0
   sticky_anchor = true
   anchor_point = mid-centered
-  x = 58
-  y = 63
-  width = 84
+  x = 51
+  y = 46
+  width = 98
   height = 22
   stay_on_screen = true
   element_loading_requirement_container_identifier = c8dc424b-5e40-4de9-b04d-ecdf7e8b5d83-1794846827738
@@ -1770,7 +1861,7 @@ vanilla_button {
   sticky_anchor = true
   anchor_point = mid-centered
   x = -89
-  y = 88
+  y = 71
   width = 22
   height = 22
   stay_on_screen = true
@@ -1849,19 +1940,19 @@ vanilla_button {
   instance_identifier = mc_titlescreen_multiplayer_button
   appearance_delay = no_delay
   disappearance_delay = no_delay
-  fade_in_v2 = first_time
+  fade_in_v2 = no_fading
   fade_out = no_fading
   auto_sizing = false
   auto_sizing_base_screen_width = 0
   auto_sizing_base_screen_height = 0
   auto_sizing_base_gui_scale = 0
-  sticky_anchor = true
-  anchor_point = mid-centered
-  x = 0
-  y = 38
-  width = 200
-  height = 22
-  stay_on_screen = true
+  sticky_anchor = false
+  anchor_point = top-left
+  x = -5000
+  y = -5000
+  width = 1
+  height = 1
+  stay_on_screen = false
   element_loading_requirement_container_identifier = 88ce475a-7442-4080-880e-2ca78827bfbd-1794846827738
   [loading_requirement_container_meta:88ce475a-7442-4080-880e-2ca78827bfbd-1794846827738] = [groups:][instances:]
   enable_parallax = false
@@ -1909,6 +2000,6 @@ vanilla_button {
   unhover_sound_volume = 1.0
   unhover_sound_channel = master
   automated_button_clicks = 0
-  is_hidden = false
+  is_hidden = true
 }
 
