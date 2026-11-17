@@ -1,7 +1,7 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "generated_at": "2026-11-17T08:59:12Z",
+  "generated_at": "2026-11-17T09:30:50Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -11,8 +11,8 @@
     "resourcepacks",
     "defaultconfigs"
   ],
-  "total_files": 471,
-  "total_bytes": 458844169,
+  "total_files": 474,
+  "total_bytes": 458899924,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -258,6 +258,18 @@
       "sha256": "fae5cbd2a5dcbe202145f894f099e54b1d47fa0bb9a1d96f54d2cdff7aa82ad1",
       "size": 440
     },
+    "config/fancymenu/assets/window_icon_16.png": {
+      "sha256": "af04a65e079125efd5cc1601017a3463e067638b0ace5ca7c697eb741de53da6",
+      "size": 704
+    },
+    "config/fancymenu/assets/window_icon_32.png": {
+      "sha256": "4194d7b8ce9d2e88cf0e789c1c1643bb434e9ffa96b73219a91b9a61ac7d4d95",
+      "size": 1625
+    },
+    "config/fancymenu/assets/window_icon_mac.icns": {
+      "sha256": "6e304a26bb20d6321448a8f0017987dc9ca70b49dcce75ae09fdeeafeea7a716",
+      "size": 53299
+    },
     "config/fancymenu/custom_gui_screens.txt": {
       "sha256": "ff492043eaf454c46e949d5eef32ece90cc5a19feb50a161dd29a43b5732c880",
       "size": 51
@@ -283,8 +295,8 @@
       "size": 42
     },
     "config/fancymenu/options.txt": {
-      "sha256": "e0efc260da31ae0e5f2e90c46cf21b8e270b4e17800c0183399853ee64c2cd6f",
-      "size": 5052
+      "sha256": "fcf6ced57de7a62bdda36199478f7a24491b0187eddccc9777d7952743d5dd9c",
+      "size": 5179
     },
     "config/fancymenu/ui_themes/cherry_blossom.json": {
       "sha256": "993c16664fe2d1b9e8ad107bf1c19c1dbb244729c403ed058ca2e54616dc5452",
