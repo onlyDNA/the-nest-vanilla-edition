@@ -1,0 +1,5 @@
+[
+  {"version":1},
+  {"ingredient":{"id":"minecraft:cyan_stained_glass"},"type":"item_stack","bookmarkType":"INGREDIENT"},
+  {"ingredient":{"id":"minecraft:green_stained_glass"},"type":"item_stack","bookmarkType":"INGREDIENT"}
+]

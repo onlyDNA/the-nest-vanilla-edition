@@ -1,0 +1,132 @@
+type = fancymenu_layout
+
+layout-meta {
+  identifier = drippy_loading_overlay
+  render_custom_elements_behind_vanilla = false
+  last_edited_time = 1794809100000
+  is_enabled = true
+  randommode = false
+  randomgroup = 1
+  randomonlyfirsttime = false
+  layout_index = 0
+}
+
+menu_background {
+  background_type = image
+  instance_identifier = nest-loading-bg-0001
+  image_path = [source:local]config/fancymenu/assets/nest_bg_loading.png
+  slide = false
+  repeat_texture = false
+  parallax = false
+  restart_animated_on_menu_load = false
+}
+
+customization {
+  action = backgroundoptions
+  keepaspectratio = true
+}
+
+scroll_list_customization {
+  preserve_scroll_list_header_footer_aspect_ratio = true
+  render_scroll_list_header_shadow = true
+  render_scroll_list_footer_shadow = true
+  show_scroll_list_header_footer_preview_in_editor = false
+  repeat_scroll_list_header_texture = false
+  repeat_scroll_list_footer_texture = false
+  show_screen_background_overlay_on_custom_background = false
+  apply_vanilla_background_blur = false
+}
+
+vanilla_button {
+  element_type = vanilla_button
+  instance_identifier = mojang_logo
+  is_hidden = true
+}
+
+vanilla_button {
+  element_type = vanilla_button
+  instance_identifier = progress_bar
+  is_hidden = true
+}
+
+element {
+  element_type = image
+  instance_identifier = nest-loading-logo-0001
+  source = [source:local]config/fancymenu/assets/nest_logo.png
+  repeat_texture = false
+  nine_slice_texture = false
+  restart_animated_on_menu_load = false
+  anchor_point = mid-centered
+  sticky_anchor = true
+  x = 0
+  y = -32
+  width = 180
+  height = 128
+  stay_on_screen = true
+  fade_in_v2 = no_fading
+}
+
+element {
+  element_type = image
+  instance_identifier = nest-loading-card-0002
+  source = [source:local]config/fancymenu/assets/panel_card.png
+  repeat_texture = false
+  nine_slice_texture = true
+  nine_slice_texture_border_x = 10
+  nine_slice_texture_border_y = 10
+  restart_animated_on_menu_load = false
+  anchor_point = mid-centered
+  sticky_anchor = true
+  x = 0
+  y = 58
+  width = 252
+  height = 28
+  stay_on_screen = true
+  fade_in_v2 = no_fading
+}
+
+element {
+  element_type = progress_bar
+  instance_identifier = nest-loading-bar-0003
+  direction = right
+  value_mode = percentage
+  progress_source = {"placeholder":"game_loading_progress"}
+  smooth_filling_animation = true
+  bar_texture = [source:local]config/fancymenu/assets/bar_fill.png
+  bar_nine_slice = false
+  background_texture = [source:local]config/fancymenu/assets/bar_bg.png
+  background_nine_slice = false
+  bar_color = #FFB84D
+  background_color = #140B0D
+  anchor_point = mid-centered
+  sticky_anchor = true
+  x = 0
+  y = 58
+  width = 230
+  height = 12
+  stay_on_screen = true
+  fade_in_v2 = no_fading
+}
+
+element {
+  element_type = text_v2
+  instance_identifier = nest-loading-footer-0006
+  interactable = false
+  source = The Nest Vanilla Edition  •  MC 26.3 NeoForge
+  source_mode = direct
+  base_color = #FFE2B3
+  shadow = true
+  scale = 0.85
+  parse_markdown = false
+  enable_scrolling = false
+  auto_line_wrapping = false
+  remove_html_breaks = true
+  anchor_point = bottom-left
+  sticky_anchor = true
+  x = 8
+  y = -6
+  width = 260
+  height = 12
+  stay_on_screen = true
+  fade_in_v2 = no_fading
+}

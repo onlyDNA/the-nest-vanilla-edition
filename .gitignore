@@ -1,0 +1,23 @@
+# Runtime & temporary workspace files
+scratch/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tmp
+
+# Never commit player worlds, logs, or personal settings
+saves/
+logs/
+crash-reports/
+screenshots/
+voxy/
+.cache/
+.lss/
+.monolith/
+installer.log
+desktop.ini
+
+# Sensitive auth / local client state
+client_launcher/launcher_state.json
+client_launcher/.test_check*

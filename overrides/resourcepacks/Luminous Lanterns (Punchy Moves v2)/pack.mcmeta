@@ -1,0 +1,77 @@
+{
+  "pack": {
+    "pack_format": 15,
+    "supported_formats": [15, 128],
+    "min_format": 15,
+    "max_format": 128,
+    "description": [
+      "",
+      {
+        "text": "Better 3D Lanterns!\n",
+        "color": "#36CFD5",
+        "bold": true
+      },
+      {
+        "text": "v1.1 | By Tixul"
+      }
+    ]
+  },
+  "overlays": {
+    "entries": [
+      {
+        "directory": "1-20-1",
+        "formats": [
+          15,
+          15
+        ],
+        "min_format": 15,
+        "max_format": 15
+      },
+      {
+        "directory": "1-21-1",
+        "formats": [
+          34,
+          34
+        ],
+        "min_format": 34,
+        "max_format": 34
+      },
+      {
+        "directory": "1-21-9",
+        "formats": [
+          69,
+          75
+        ],
+        "min_format": 69,
+        "max_format": 75
+      },
+      {
+        "directory": "26-1",
+        "formats": [
+          84,
+          84
+        ],
+        "min_format": 84,
+        "max_format": 84
+      },
+      {
+        "directory": "26-2",
+        "formats": [
+          88,
+          88
+        ],
+        "min_format": 88,
+        "max_format": 88
+      },
+      {
+        "directory": "26-3",
+                "formats": [
+          97,
+          128
+        ],
+        "min_format": 97,
+        "max_format": 128
+      }
+    ]
+  }
+}

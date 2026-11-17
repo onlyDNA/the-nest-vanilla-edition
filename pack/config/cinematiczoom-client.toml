@@ -1,0 +1,56 @@
+#Tiempo de suavizado en milisegundos (0 para instantáneo).
+# Default: 200
+# Range: 0 ~ 5000
+smoothMs = 200
+#Tamaño de las barras cinematográficas (porcentaje de la altura de pantalla).
+# Default: 10.0
+# Range: 0.0 ~ 40.0
+barsPercent = 10.0
+#Multiplicador de zoom inicial al pulsar la tecla.
+# Default: 0.3
+# Range: 0.01 ~ 1.0
+baseZoomMultiplier = 0.3
+#Multiplicador de zoom mínimo (máximo acercamiento).
+# Default: 0.05
+# Range: 0.001 ~ 1.0
+minZoomMultiplier = 0.05
+#Multiplicador de zoom máximo (mínimo acercamiento).
+# Default: 1.0
+# Range: 0.01 ~ 1.0
+maxZoomMultiplier = 1.0
+#Velocidad de cambio de zoom con la rueda del ratón.
+# Default: 0.05
+# Range: 0.001 ~ 0.5
+wheelStep = 0.05
+#Activa automáticamente la cámara cinematográfica (Smooth Camera) al hacer zoom.
+autoCinematicCamera = false
+#Oculta automáticamente el HUD al hacer zoom para una experiencia más limpia.
+autoHideHud = true
+#Permite ajustar el nivel de zoom con la rueda del ratón mientras se pulsa la tecla.
+mouseWheelEnabled = true
+#Escala el crosshair a 2x con fade out y lo muestra con fade in al soltar C.
+crosshairEffect = true
+#Reproduce el sonido del catalejo al iniciar el zoom.
+zoomStartSound = true
+#Volumen individual del sonido del catalejo.
+# Default: 1.0
+# Range: 0.0 ~ 1.0
+zoomStartVolume = 1.0
+#Reproduce un sonido con tono dinamico al ajustar el zoom con scroll.
+scrollSound = true
+#Volumen individual del sonido de la rueda.
+# Default: 1.0
+# Range: 0.0 ~ 1.0
+scrollVolume = 1.0
+#Volumen de los efectos de CinematicZoom.
+# Default: 0.65
+# Range: 0.0 ~ 1.0
+soundVolume = 0.65
+#Reproduce un obturador al pulsar F2 durante el zoom.
+screenshotSound = true
+#Volumen individual del sonido de captura.
+# Default: 1.0
+# Range: 0.0 ~ 1.0
+screenshotVolume = 1.0
+#Desactiva el zoom conflictivo de Essential en ejecucion.
+disableEssentialZoom = true

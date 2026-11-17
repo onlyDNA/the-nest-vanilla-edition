@@ -1,0 +1,406 @@
+#Allowed Values: IMMERSIVE, IMMERSIVE_TOON, INSANE, INSANE_TOON, ENHANCED, ENHANCED_TOON, VANILLA_PLUS, VANILLA_PLUS_TOON, CUSTOM
+preset = "CUSTOM"
+customValues = "smoothBlockPlace=true;torchLight=true;moddedBiomes=true;particleRate=MAXIMUM;fogRenderingMode=IMMERSIVE_EXTENDED;skyMode=VANILLA;snowAndSandParticleStyle=VANILLA;fireflies=true;groundMist=true;weatherMist=true;specks=true;windGusts=true;leaves=true;shootingStars=true;cloudRendering=FANCY;cloudFormation=MODERN;customSkies=true;lightRays=true;underwaterLightRays=true;underwaterCaustics=true;shoreFoam=true;lavaFoam=true;waterfallMist=true;waterLeaves=true;naturalFoliageColors=true;movingGrass=true;movingPlants=true;movingLeaves=true;gpuGrass=true;gpuGrassDensity=3;gpuGrassHeight=100;gpuGrassDistance=32;atmosphericFog=true;dungeonsFire=true;enhancedLight=true;coloredLightEngine=false;coloredLightIntensity=50;coloredLightRadius=75;bloom=true;bloomIntensity=100;atmosphericFogStrength=100;dynamicFog=true;underwaterShadows=true;underwaterDepthBlur=true;underwaterGlint=true;terrainGlint=false;glintSmoothness=15;dynamicColorGrading=true;waterColors=VANILLA;multiCloudLayers=false;doubleClouds=false;endColorGrading=true;endAura=true;endDistanceFog=true;endParticles=true;waterColorMapping=true;waterReflections=true;iceReflections=true;reflectionQuality=NORMAL;reflectionAmount=100;blockOutlines=false;blockOutlineThickness=2;mobOutlines=false;mobOutlineThickness=2;enchantmentOutlines=true;dynamicItemOutlines=true;enchantmentOutlineIntensity=100;enchantmentOutlineSize=10;enchantmentOutlineHueShift=0;enchantmentOutlineSaturation=80;shadows=true;shadowMode=ENHANCED;shadowResolution=LOW;shadowDistance=256;shadowStrength=100;shadowBoost=0;shadowVibrancy=100;mobShadows=true;depthCalculation=false;smoothShadowMovement=true;pollenAndSpores=true;lowLyingFog=true;lightRayIntensity=200;underwaterLightRayIntensity=150;weatherVisuals=CUSTOM;auroraBorealis=true;meteorShower=true;sandWind=true;sandStorm=true;alwaysWinter=false;fireworks=true"
+smoothBlockPlace = true
+torchLight = true
+moddedBiomes = true
+#Allowed Values: MAXIMUM, REDUCED, NONE
+particleRate = "MAXIMUM"
+#Allowed Values: IMMERSIVE, IMMERSIVE_EXTENDED, CHUNK_DISTANCE, OFF
+fogRenderingMode = "IMMERSIVE_EXTENDED"
+#Allowed Values: VANILLA, REALISTIC
+skyMode = "VANILLA"
+#Allowed Values: HD, VANILLA
+snowAndSandParticleStyle = "VANILLA"
+fireflies = true
+groundMist = true
+weatherMist = true
+specks = true
+windGusts = true
+leaves = true
+shootingStars = true
+#Allowed Values: OFF, FANCY, FLAT, SHADED
+cloudRendering = "FANCY"
+#Allowed Values: LEGACY, MODERN
+cloudFormation = "MODERN"
+multiCloudLayers = false
+doubleClouds = false
+customSkies = true
+lightRays = true
+underwaterLightRays = true
+underwaterCaustics = true
+shoreFoam = true
+lavaFoam = true
+waterfallMist = true
+useIrisShaders = false
+waterLeaves = true
+naturalFoliageColors = true
+atmosphericFog = true
+# Default: 100
+# Range: 0 ~ 300
+atmosphericFogStrength = 100
+dynamicFog = true
+underwaterShadows = true
+underwaterDepthBlur = true
+underwaterGlint = true
+terrainGlint = false
+dynamicColorGrading = true
+# Default: 15
+# Range: 0 ~ 100
+glintSmoothness = 15
+#Allowed Values: VANILLA, REALISTIC
+waterColors = "VANILLA"
+movingGrass = true
+movingPlants = true
+movingLeaves = true
+gpuGrass = true
+# Default: 3
+# Range: 1 ~ 6
+gpuGrassDensity = 3
+# Default: 100
+# Range: 50 ~ 150
+gpuGrassHeight = 100
+# Default: 32
+# Range: 16 ~ 48
+gpuGrassDistance = 32
+bloom = true
+# Default: 100
+# Range: 0 ~ 100
+bloomIntensity = 100
+dungeonsFire = true
+enhancedLight = true
+coloredLightEngine = false
+# Default: 50
+# Range: 0 ~ 200
+coloredLightIntensity = 50
+# Default: 75
+# Range: 25 ~ 200
+coloredLightRadius = 75
+endColorGrading = true
+endAura = true
+endDistanceFog = true
+endParticles = true
+waterColorMapping = true
+waterReflections = true
+iceReflections = true
+#Allowed Values: LOW, NORMAL, HIGH
+reflectionQuality = "NORMAL"
+# Default: 100
+# Range: 0 ~ 100
+reflectionAmount = 100
+blockOutlines = false
+# Default: 2
+# Range: 1 ~ 5
+blockOutlineThickness = 2
+mobOutlines = false
+# Default: 2
+# Range: 1 ~ 5
+mobOutlineThickness = 2
+enchantmentOutlines = true
+dynamicItemOutlines = true
+# Default: 100
+# Range: 0 ~ 100
+enchantmentOutlineIntensity = 100
+# Default: 10
+# Range: 1 ~ 15
+enchantmentOutlineSize = 10
+# Default: 0
+# Range: -180 ~ 180
+enchantmentOutlineHueShift = 0
+# Default: 80
+# Range: 0 ~ 100
+enchantmentOutlineSaturation = 80
+shadows = true
+#Allowed Values: NORMAL, ENHANCED
+shadowMode = "ENHANCED"
+# Default: 256
+# Range: 32 ~ 512
+shadowDistance = 256
+#Allowed Values: POTATO, LOW, MEDIUM, HIGH
+shadowResolution = "LOW"
+# Default: 100
+# Range: 0 ~ 100
+shadowStrength = 100
+# Default: 0
+# Range: 0 ~ 100
+shadowBoost = 0
+# Default: 100
+# Range: 100 ~ 200
+shadowVibrancy = 100
+mobShadows = true
+depthCalculation = false
+smoothShadowMovement = true
+pollenAndSpores = true
+lowLyingFog = true
+# Default: 200
+# Range: 0 ~ 500
+lightRayIntensity = 200
+# Default: 150
+# Range: 0 ~ 500
+underwaterLightRayIntensity = 150
+#Allowed Values: VANILLA, ENHANCED, CUSTOM
+weatherVisuals = "CUSTOM"
+auroraBorealis = true
+meteorShower = true
+sandWind = true
+sandStorm = true
+alwaysWinter = false
+fireworks = true
+#Allowed Values: OFF, VANILLA, ENHANCED
+gradingMode = "ENHANCED"
+#Allowed Values: DAWN, NOON, DUSK, NIGHT
+gradingEditTime = "NOON"
+# Default: 0
+# Range: -100 ~ 100
+gradingExposure = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingContrast = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingShadows = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingMidtones = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingHighlights = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingSaturation = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingVibrance = 0
+# Default: 0
+# Range: -180 ~ 180
+gradingHueShift = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingTemperature = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingTint = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingRedStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingGreenStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingBlueStrength = 100
+# Default: 0
+# Range: -60 ~ 60
+gradingRedHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingGreenHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingBlueHue = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnExposure = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDawnContrast = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnShadows = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnMidtones = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnHighlights = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDawnSaturation = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnVibrance = 0
+# Default: 0
+# Range: -180 ~ 180
+gradingDawnHueShift = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnTemperature = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDawnTint = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDawnRedStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingDawnGreenStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingDawnBlueStrength = 100
+# Default: 0
+# Range: -60 ~ 60
+gradingDawnRedHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingDawnGreenHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingDawnBlueHue = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonExposure = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNoonContrast = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonShadows = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonMidtones = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonHighlights = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNoonSaturation = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonVibrance = 0
+# Default: 0
+# Range: -180 ~ 180
+gradingNoonHueShift = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonTemperature = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNoonTint = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNoonRedStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingNoonGreenStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingNoonBlueStrength = 100
+# Default: 0
+# Range: -60 ~ 60
+gradingNoonRedHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingNoonGreenHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingNoonBlueHue = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskExposure = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDuskContrast = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskShadows = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskMidtones = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskHighlights = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDuskSaturation = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskVibrance = 0
+# Default: 0
+# Range: -180 ~ 180
+gradingDuskHueShift = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskTemperature = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingDuskTint = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingDuskRedStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingDuskGreenStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingDuskBlueStrength = 100
+# Default: 0
+# Range: -60 ~ 60
+gradingDuskRedHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingDuskGreenHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingDuskBlueHue = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNightExposure = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNightContrast = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingNightShadows = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNightMidtones = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNightHighlights = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNightSaturation = 100
+# Default: 0
+# Range: -100 ~ 100
+gradingNightVibrance = 0
+# Default: 0
+# Range: -180 ~ 180
+gradingNightHueShift = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNightTemperature = 0
+# Default: 0
+# Range: -100 ~ 100
+gradingNightTint = 0
+# Default: 100
+# Range: 0 ~ 200
+gradingNightRedStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingNightGreenStrength = 100
+# Default: 100
+# Range: 0 ~ 200
+gradingNightBlueStrength = 100
+# Default: 0
+# Range: -60 ~ 60
+gradingNightRedHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingNightGreenHue = 0
+# Default: 0
+# Range: -60 ~ 60
+gradingNightBlueHue = 0
+#Allowed Values: BLACK_DUNGEON, WHITE_DUNGEON, CUSTOM
+outlineStyle = "BLACK_DUNGEON"
+# Default: 255
+# Range: 0 ~ 255
+outlineRed = 255
+# Default: 255
+# Range: 0 ~ 255
+outlineGreen = 255
+# Default: 255
+# Range: 0 ~ 255
+outlineBlue = 255
+# Default: 100
+# Range: 0 ~ 100
+outlineOpacity = 100

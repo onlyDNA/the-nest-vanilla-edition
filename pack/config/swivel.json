@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "turnSpeed": 6,
+  "distance": 4.0,
+  "raiseCamera": true,
+  "height": 0.5,
+  "strafe": false,
+  "swivelWhileRunning": false,
+  "smoothCollisions": true,
+  "crosshair": true,
+  "alignOnExit": true,
+  "hideCrosshairInFreeLook": true,
+  "spyglassFirstPerson": true,
+  "aimCamera": "rightShoulder",
+  "fadePlayer": true
+}

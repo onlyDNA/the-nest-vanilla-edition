@@ -1,0 +1,46 @@
+// More Frogs configuration
+// This file uses JSON5 syntax (https://json5.org/)
+{
+  // Block that flowing lava turns into when it touches Super Hot Water. Lava source blocks always turn into obsidian.
+  "lavaInteractionResult": "minecraft:blackstone",
+
+  // Block that Super Hot Water turns into when it touches normal water.
+  "waterInteractionResult": "minecraft:calcite",
+
+  // Extra fluids Super Hot Water reacts with. Each entry is 'fluid_id,block_id': when Super Hot Water touches that fluid it turns into that block.
+  "customFluidInteractions": [],
+
+  // What a frog variant drops when it eats a mob. Each entry is 'variant_id,victim_id,item_id,chance,min,max', where chance is 0 to 1 and min/max is the item count.
+  // Synced: players use the server's value while connected to it
+  "frogDrops": [
+    "morefrogs:infernal,minecraft:magma_cube,minecraft:magma_block,1.0,1,1",
+    "morefrogs:infernal,minecraft:magma_cube,minecraft:magma_cream,0.7,1,1",
+    "morefrogs:warped,minecraft:magma_cube,minecraft:shroomlight,1.0,1,1",
+    "morefrogs:crimson,minecraft:magma_cube,minecraft:shroomlight,1.0,1,1",
+    "morefrogs:spirit,minecraft:magma_cube,minecraft:bone_meal,1.0,1,1",
+    "morefrogs:purpur,minecraft:magma_cube,minecraft:chorus_fruit,1.0,1,1",
+    "morefrogs:ender,minecraft:magma_cube,morefrogs:light_at_the_end,0.4,1,1",
+    "morefrogs:sculk,minecraft:slime,minecraft:sculk,1.0,1,1",
+    "morefrogs:poison_dart,minecraft:slime,morefrogs:mulch,1.0,1,1",
+    "morefrogs:wood,minecraft:slime,minecraft:blue_ice,1.0,1,1",
+    "morefrogs:dusk_and_dawn,minecraft:slime,morefrogs:skybox_core,0.3,1,1"
+  ],
+
+  // Picture, animated GIF or video behind this settings menu: a file in config/morefrogs/bg, a link, a link to a .txt list of links, or empty for a random one from that folder (none turns it off). Videos need FFmpeg
+  "menuBackground": "",
+
+  // How strongly the menu background is blurred, 0 for sharp
+  "menuBackgroundBlurPercent": 0,
+
+  // How much the menu background picture is darkened
+  "menuBackgroundDimPercent": 55,
+
+  // Frame rate for video and animated GIF menu backgrounds
+  "menuBackgroundFps": 30,
+
+  // Music while this settings menu is open: a file in config/morefrogs/bgmusic, a link, or empty for random tracks from that folder (none turns it off). Formats other than ogg and wav need FFmpeg
+  "menuMusic": "",
+
+  // Volume of the settings menu music
+  "menuMusicVolumePercent": 30
+}
