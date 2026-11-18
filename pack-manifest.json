@@ -1,11 +1,11 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "launcher_version": "1.1.0",
-  "launcher_sha256": "8b8d6278fb69e7d87ba3c6427351fbfd8e878240ac47ec62a57a82d66c98aa62",
+  "launcher_version": "1.2.0",
+  "launcher_sha256": "6fe7cd191019e91ec9ffd0380bd26a42bf83d87cbb752f92750220b06c0cc0e8",
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Launcher.exe",
   "server_address": "192.168.1.77:25565",
-  "generated_at": "2026-11-18T21:36:09Z",
+  "generated_at": "2026-11-18T21:48:22Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -16,7 +16,7 @@
     "defaultconfigs"
   ],
   "total_files": 475,
-  "total_bytes": 459014664,
+  "total_bytes": 459014665,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -351,8 +351,8 @@
       "size": 809
     },
     "config/fml.toml": {
-      "sha256": "cec48c72de12c5afbddd310a328f22a90731571b37184034ae4e2bee4751194b",
-      "size": 1540
+      "sha256": "21b49d841aa33b0e9db539baca7b9c81a871a5f21b3e98a37042443ebeed7de0",
+      "size": 1541
     },
     "config/footprintparticle.json": {
       "sha256": "e1781a6c27fc7eb04c9bd3b72a663acf0265217ab7e3e040cf672e6a18a395eb",

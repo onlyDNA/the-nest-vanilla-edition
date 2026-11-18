@@ -97,6 +97,45 @@ def save_json(path: str, data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
+class _MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", ctypes.c_ulong),
+        ("dwMemoryLoad", ctypes.c_ulong),
+        ("ullTotalPhys", ctypes.c_ulonglong),
+        ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong),
+        ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong),
+        ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
+
+
+def get_memory_info_gb() -> tuple[float, float, float]:
+    """Return (total_phys_gb, avail_phys_gb, avail_commit_gb) on Windows."""
+    try:
+        st = _MEMORYSTATUSEX()
+        st.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+            gb = float(1024 ** 3)
+            return (st.ullTotalPhys / gb, st.ullAvailPhys / gb, st.ullAvailPageFile / gb)
+    except Exception:
+        pass
+    return (16.0, 10.0, 12.0)
+
+
+def resolve_safe_ram_gb(requested_gb: int) -> tuple[int, str]:
+    """Clamp requested JVM heap safely so Windows + native GL/Voxy buffers never OOM."""
+    total_gb, _avail_phys, avail_commit = get_memory_info_gb()
+    # Leave plenty of room for OS, GPU drivers, native/off-heap Voxy allocations, and background apps
+    phys_cap = max(4, int(total_gb * 0.55))
+    commit_cap = max(4, int(avail_commit - 3))
+    safe = min(max(4, requested_gb), phys_cap, commit_cap)
+    if safe < requested_gb:
+        return safe, f"Clamped RAM {requested_gb}GB -> {safe}GB (safe limit {phys_cap}GB, commit free {avail_commit:.1f}GB)"
+    return safe, ""
+
+
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -1095,7 +1134,7 @@ class NestLauncher:
                 "asset_index": "34",
                 "manifest_url": "",
                 "files_base_url": "",
-                "default_ram_gb": 8,
+                "default_ram_gb": 6,
             },
         )
         self.state = load_json(
@@ -1103,7 +1142,7 @@ class NestLauncher:
             {
                 "nick": "",
                 "uuid": "",
-                "ram_gb": self.cfg.get("default_ram_gb", 8),
+                "ram_gb": self.cfg.get("default_ram_gb", 6),
                 "install_root": DEFAULT_INSTALL_ROOT,
                 "skin_mode": "mojang",
                 "skin_slim": False,
@@ -1341,11 +1380,11 @@ class NestLauncher:
         opts.pack(fill="x")
 
         tk.Label(opts, text="Memory", font=("Segoe UI", 8, "bold"), bg=BG, fg=MUTED).pack(side="left")
-        self.ram_var = tk.StringVar(value=f"{self.state.get('ram_gb', 8)} GB")
+        self.ram_var = tk.StringVar(value=f"{self.state.get('ram_gb', 6)} GB")
         ttk.Combobox(
             opts,
             textvariable=self.ram_var,
-            values=["6 GB", "8 GB", "10 GB", "12 GB"],
+            values=["4 GB", "6 GB", "8 GB", "10 GB", "12 GB"],
             width=6,
             state="readonly",
             font=("Segoe UI", 9),
@@ -1835,7 +1874,9 @@ class NestLauncher:
         mc_ver = self.cfg.get("mc_version", "26.3")
         nf_ver = self.cfg.get("neoforge_version", "26.3.0.103")
         game_dir = self.game_dir
-        ram_gb = int(self.state.get("ram_gb", 8))
+        requested_ram_gb = int(self.state.get("ram_gb", 6))
+        ram_gb, ram_note = resolve_safe_ram_gb(requested_ram_gb)
+        xms_mb = min(1024, ram_gb * 512)
 
         with open(os.path.join(install_dir, "versions", mc_ver, f"{mc_ver}.json"), "r", encoding="utf-8") as f:
             mc_json = json.load(f)
@@ -1881,13 +1922,18 @@ class NestLauncher:
         os.makedirs(natives_dir, exist_ok=True)
         cp_str = os.pathsep.join(cp_entries)
 
+        # G1GC avoids ZGC's huge multi-mapped virtual/commit reservation on Windows alongside Voxy off-heap RAM
         jvm_args = [
             f"-Xmx{ram_gb * 1024}m",
-            "-Xms512m",
-            "-XX:+UseZGC",
+            f"-Xms{xms_mb}m",
+            "-XX:+UseG1GC",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:G1NewSizePercent=20",
+            "-XX:G1ReservePercent=20",
+            "-XX:MaxGCPauseMillis=50",
+            "-XX:G1HeapRegionSize=32M",
+            "-XX:+DisableExplicitGC",
             f"-Dminecraft.applet.TargetDirectory={game_dir}",
-            f"-Djava.library.path={natives_dir}",
-            f"-DlibraryDirectory={lib_dir}",
             "-Dfml.ignorePatchDiscrepancies=true",
             "-Dfml.ignoreInvalidMinecraftCertificates=true",
         ]
@@ -1896,7 +1942,7 @@ class NestLauncher:
                 a = (
                     arg.replace("${natives_directory}", natives_dir)
                     .replace("${launcher_name}", "TheNestLauncher")
-                    .replace("${launcher_version}", "1.0")
+                    .replace("${launcher_version}", self.cfg.get("launcher_version", "1.2.0"))
                     .replace("${classpath}", cp_str)
                     .replace("${library_directory}", lib_dir)
                     .replace("${classpath_separator}", os.pathsep)
@@ -1917,7 +1963,10 @@ class NestLauncher:
             "--versionType", "release",
         ] + [str(x) for x in nf_json.get("arguments", {}).get("game", []) if isinstance(x, str)]
 
-        self._set_status(f"Launching as {self.state['nick']}...", OK_GREEN, 100)
+        status_msg = f"Launching as {self.state['nick']} ({ram_gb} GB)..."
+        if ram_note:
+            status_msg = f"{ram_note} · Launching..."
+        self._set_status(status_msg, OK_GREEN, 100)
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         subprocess.Popen(
             [java_exe] + jvm_args + [nf_json["mainClass"]] + game_args,
