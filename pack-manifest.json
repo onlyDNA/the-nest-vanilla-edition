@@ -1,7 +1,7 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "generated_at": "2026-11-17T09:30:50Z",
+  "generated_at": "2026-11-18T21:19:18Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -11,8 +11,8 @@
     "resourcepacks",
     "defaultconfigs"
   ],
-  "total_files": 474,
-  "total_bytes": 458899924,
+  "total_files": 475,
+  "total_bytes": 459014482,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -1461,6 +1461,10 @@
     "mods/nerb-neoforge-0.6.2-26.3.jar": {
       "sha256": "245a35597c42bfb7bfce2ab0f785ea60fe4706af58264f268c043b21d61edb81",
       "size": 40450
+    },
+    "mods/nest_txadmin-1.0.0-neoforge-26.3.jar": {
+      "sha256": "bbfec2194d417afc47f063949e7154240bb50a599727f1dc09ee7023119af2c3",
+      "size": 114558
     },
     "mods/nomorepopups-neoforge-26.2-2.3.1.jar": {
       "sha256": "e7c02917439ce13c0afcaeec561fca81332bcaed7b0bfda3df90ca2c33c77ae4",

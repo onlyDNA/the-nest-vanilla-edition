@@ -17,6 +17,7 @@ ROOT_FILES = ("servers.dat",)
 SKIP_FILES = {
     "defaultoptions-local.toml",
     "inventoryessentials-local.toml",
+    "nest_skin_client.json",
     "etf_warnings.json",
     "desktop.ini",
 }

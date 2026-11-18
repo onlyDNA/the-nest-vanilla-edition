@@ -124,6 +124,7 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **Chunky** | World Pre-Generator | `[SERVER]` | `NeoForge` | `CF Manifest` | **Installed** (`Chunky-NeoForge-1.5.66.jar`). Pre-generate a `5,000–10,000` block radius before launch so server doesn't lag on opening day. |
 | **Simple Backups** | World Backups | `[SERVER]` | `NeoForge` | `CF Manifest` | **Installed** (`SimpleBackups-26.3.1.jar`). `common.toml` excludes `voxy/` (`ignored_paths = ["voxy"]`) to prevent Windows `storage/LOCK` errors. |
 | **WorldEdit** | Admin / World Building | `[SERVER]` / `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`worldedit-mod-7.4.6.jar`). Includes WorldEdit CUI protocol (`[BOTH]` only if admins want CUI selection wireframes). |
+| **The Nest — In-Game Admin Panel (txAdmin)** | In-Game Admin & Moderation GUI | `[BOTH]` | `NeoForge` | `overrides/mods/` | **Installed** (`nest_txadmin-1.0.0-neoforge-26.3.jar`). Opens a custom dark-mode txAdmin GUI in-game via `/adminpanel` (`/tx`, `/ap`) for any OP, plus `/god`, `/noclip`, `/fly`, `/vanish`, `/tpto`, `/bring`, `/return`, `/freeze`, `/invsee`, `/endersee`, and `/heal`. |
 
 ---
 
