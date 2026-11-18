@@ -51,6 +51,10 @@ ADOPTIUM_JRE25_API = (
 
 RE_VALID_NICK = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 
+
+class _SelfUpdateTriggered(Exception):
+    """Internal signal raised when the launcher swaps its own EXE and restarts."""
+
 # Warm Espresso-Brown & Nest Gold Theme
 BG = "#16110d"
 SURFACE = "#211913"
@@ -1606,6 +1610,9 @@ class NestLauncher:
                 self._launch_game(java_exe, install_dir)
             else:
                 self._set_status("Modpack is up to date.", OK_GREEN, 100)
+        except _SelfUpdateTriggered:
+            self._safe_ui(lambda: self.root.after(150, self.root.destroy))
+            return
         except Exception as exc:
             self.busy = False
             self._set_status(f"Error: {exc}", ERR_RED)
@@ -1614,6 +1621,50 @@ class NestLauncher:
             return
         self.busy = False
         self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
+
+    def _check_self_update(self, manifest: dict) -> None:
+        if not getattr(sys, "frozen", False):
+            return
+        remote_sha = str(manifest.get("launcher_sha256") or "").strip().lower()
+        remote_url = str(manifest.get("launcher_url") or self.cfg.get("launcher_url") or "").strip()
+        if not remote_sha or not remote_url or "CHANGE_ME_" in remote_url:
+            return
+        current_exe = sys.executable
+        if not os.path.exists(current_exe):
+            return
+        local_sha = sha256_file(current_exe).lower()
+        if local_sha == remote_sha:
+            return
+
+        new_ver = manifest.get("launcher_version", "new")
+        self._set_status(f"Updating launcher to v{new_ver}...", ACCENT, 12)
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp_exe = os.path.join(STATE_DIR, "TheNestLauncher.new.exe")
+        download_file(remote_url, tmp_exe, remote_sha)
+
+        cmd_path = os.path.join(STATE_DIR, "update_launcher.cmd")
+        bat = (
+            "@echo off\n"
+            "set /a tries=0\n"
+            ":waitloop\n"
+            "timeout /t 1 /nobreak >nul\n"
+            f'move /y "{tmp_exe}" "{current_exe}" >nul 2>&1\n'
+            "if not errorlevel 1 goto launch\n"
+            "set /a tries+=1\n"
+            "if %tries% GEQ 15 goto end\n"
+            "goto waitloop\n"
+            ":launch\n"
+            f'start "" "{current_exe}"\n'
+            ":end\n"
+            'del /f /q "%~f0" >nul 2>&1\n'
+        )
+        with open(cmd_path, "w", encoding="utf-8") as f:
+            f.write(bat)
+
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        subprocess.Popen(["cmd.exe", "/c", cmd_path], close_fds=True, creationflags=flags)
+        self._set_status("Launcher updated! Restarting...", OK_GREEN, 100)
+        raise _SelfUpdateTriggered()
 
     def _sync_from_github(self) -> None:
         manifest_url = self.cfg.get("manifest_url", "").strip()
@@ -1632,10 +1683,15 @@ class NestLauncher:
             self._set_status(f"Offline/GitHub unreachable ({exc}); using local files.", ACCENT, 40)
             return
 
+        if manifest.get("server_address"):
+            self.cfg["server_address"] = manifest["server_address"]
+
         ver = manifest.get("pack_version", self.cfg.get("pack_version", "1.0.0"))
         self._safe_ui(lambda: self.ver_lbl.configure(
             text=f"v{ver} · MC {manifest.get('mc_version', '26.3')} · NeoForge {manifest.get('neoforge_version', '26.3.0.103')}"
         ))
+
+        self._check_self_update(manifest)
 
         expected: dict[str, dict] = manifest.get("files", {})
         managed_dirs = manifest.get("managed_dirs", ["mods", "config", "resourcepacks", "defaultconfigs"])

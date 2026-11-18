@@ -799,7 +799,7 @@ public final class CharCustomServerManager {
                 sb.append("§l");
             }
             String nick = (customNick != null && !customNick.isBlank()) ? customNick : realName;
-            sb.append(nick);
+            sb.append(nick).append("§r");
             return sb.toString();
         }
 
@@ -3061,27 +3061,31 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 
 public class TxAdminScreen extends Screen {
-    private static final int COL_BG = 0xF216110D;
-    private static final int COL_SURFACE = 0xFF211913;
-    private static final int COL_SURFACE_ALT = 0xFF2C2219;
-    private static final int COL_INPUT_BG = 0xFF100C09;
-    private static final int COL_BORDER = 0xFF3B2D21;
-    private static final int COL_TEXT = 0xFFF5ECE0;
-    private static final int COL_MUTED = 0xFFA89682;
+    private static final int COL_BG = 0xEE140F0C;
+    private static final int COL_SURFACE = 0xFF1D1611;
+    private static final int COL_SURFACE_ALT = 0xFF2C221A;
+    private static final int COL_INPUT_BG = 0xFF17120E;
+    private static final int COL_ROW_BG = 0xFF211914;
+    private static final int COL_DIVIDER = 0xFF2F241B;
+    private static final int COL_TEXT = 0xFFF4EDE4;
+    private static final int COL_MUTED = 0xFF9C8B7A;
     private static final int COL_ACCENT = 0xFFE09F3E;
 
-    // Rich dark-bronze/gold, emerald-green, and crimson-red button backgrounds (all use crisp light text with shadow=false!)
-    private static final int COL_GOLD_BTN = 0xFF8C5A16;
-    private static final int COL_GOLD_HOVER = 0xFFA86D1C;
-    private static final int COL_GREEN = 0xFF1D6F42;
-    private static final int COL_GREEN_HOVER = 0xFF258A53;
-    private static final int COL_RED = 0xFF7F2329;
-    private static final int COL_RED_HOVER = 0xFF9E2C34;
+    // Warm, calm pill button palette (crisp white text, shadow=false)
+    private static final int COL_GOLD_BTN = 0xFF8A5816;
+    private static final int COL_GOLD_HOVER = 0xFFA66B1C;
+    private static final int COL_GREEN = 0xFF1E663E;
+    private static final int COL_GREEN_HOVER = 0xFF277F4F;
+    private static final int COL_RED = 0xFF722429;
+    private static final int COL_RED_HOVER = 0xFF8F2E34;
+
+    private static final int ROW_H = 30;
+    private static final int ROW_PITCH = 34;
 
     private static final String[] CAT_IDS = {"self", "players", "char", "world", "gamerules", "mods", "items"};
     private static final String[] CAT_LABELS = {
-            "Self (txAdmin)",
-            "Player Actions",
+            "Self",
+            "Players",
             "Char & Teams",
             "World & Time",
             "Gamerules",
@@ -3219,49 +3223,50 @@ public class TxAdminScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        this.panelW = Math.min(466, this.width - 12);
-        this.panelH = Math.min(272, this.height - 12);
+        this.panelW = Math.min(520, this.width - 16);
+        this.panelH = Math.min(312, this.height - 16);
         this.panelX = (this.width - this.panelW) / 2;
         this.panelY = (this.height - this.panelH) / 2;
 
-        this.sideX = this.panelX + 6;
-        this.sideY = this.panelY + 34;
-        this.sideW = 104;
-        this.sideH = this.panelH - 52;
+        this.sideX = this.panelX + 8;
+        this.sideY = this.panelY + 38;
+        this.sideW = 112;
+        this.sideH = this.panelH - 62;
 
-        this.listX = this.sideX + this.sideW + 6;
-        this.listY = this.sideY;
-        this.listW = this.panelW - this.sideW - 18;
-        this.listH = this.sideH;
+        this.listX = this.sideX + this.sideW + 8;
+        this.listY = this.sideY + 24;
+        this.listW = this.panelW - this.sideW - 24;
+        this.listH = this.sideH - 24;
 
-        int tpX = panelX + 112;
         int tpY = panelY + 8;
+        int tpX = panelX + Math.max(132, (panelW - 144) / 2 - 20);
 
-        this.addRenderableWidget(new TxButton(tpX, tpY, 14, 16, "<", 0, () -> cyclePlayer(-1)));
-        this.addRenderableWidget(new TxButton(tpX + 95, tpY, 14, 16, ">", 0, () -> cyclePlayer(1)));
-        this.addRenderableWidget(new TxButton(tpX + 111, tpY, 16, 16, "@a", 0, () -> {
+        this.addRenderableWidget(new TxButton(tpX, tpY, 16, 17, "<", 0, () -> cyclePlayer(-1)));
+        this.addRenderableWidget(new TxButton(tpX + 106, tpY, 16, 17, ">", 0, () -> cyclePlayer(1)));
+        this.addRenderableWidget(new TxButton(tpX + 125, tpY, 22, 17, "@a", 0, () -> {
             int idx = playerNames.indexOf("@a");
             if (idx >= 0) selectedPlayerIdx = idx;
             statusText = "Target set to @a (All Players)";
             rebuildRows();
         }));
 
+        int rx = panelX + panelW - 96;
+        this.addRenderableWidget(new TxButton(rx, tpY, 36, 17, "Save", 2, () -> sendCmd("save-all", "World Saved!")));
+        this.addRenderableWidget(new TxButton(rx + 39, tpY, 34, 17, "Bkup", 0, () -> sendCmd("simplebackups backup start", "Backup Started!")));
+        this.addRenderableWidget(new TxButton(rx + 76, tpY, 16, 17, "x", 3, this::onClose));
+
         String prevText = this.inputBox != null ? this.inputBox.getValue() : "";
-        this.inputBox = new EditBox(this.font, this.panelX + 242, this.panelY + 8, 128, 16, Component.literal("Input"));
+        this.inputBox = new EditBox(this.font, this.listX, this.sideY, this.listW, 18, Component.literal("Input"));
         this.inputBox.setMaxLength(128);
-        this.inputBox.setHint(Component.literal("Reason / X Y Z / Msg..."));
+        this.inputBox.setBordered(false);
+        this.inputBox.setHint(Component.literal("Type nick, team, reason, or announcement..."));
         this.inputBox.setValue(prevText);
         this.addRenderableWidget(this.inputBox);
 
-        int rx = panelX + panelW - 88;
-        this.addRenderableWidget(new TxButton(rx, tpY, 34, 16, "Save", 2, () -> sendCmd("save-all", "World Saved!")));
-        this.addRenderableWidget(new TxButton(rx + 36, tpY, 32, 16, "Bkup", 0, () -> sendCmd("simplebackups backup start", "Backup Started!")));
-        this.addRenderableWidget(new TxButton(rx + 70, tpY, 14, 16, "X", 3, this::onClose));
-
-        int cy = sideY + 17;
+        int cy = sideY + 6;
         for (int i = 0; i < CAT_LABELS.length; i++) {
             final int catIdx = i;
-            TxButton btn = new TxButton(sideX + 4, cy, sideW - 8, 19, CAT_LABELS[i], i == selectedCategoryIdx ? 1 : 0, () -> {
+            TxButton btn = new TxButton(sideX + 4, cy, sideW - 8, 22, CAT_LABELS[i], i == selectedCategoryIdx ? 1 : 0, true, () -> {
                 selectedCategoryIdx = catIdx;
                 scrollOffset = 0;
                 if ("char".equals(CAT_IDS[catIdx])) {
@@ -3272,7 +3277,7 @@ public class TxAdminScreen extends Screen {
             });
             this.catButtons[i] = btn;
             this.addRenderableWidget(btn);
-            cy += 21;
+            cy += 24;
         }
 
         this.addRenderableWidget(new OptionListWidget(listX, listY, listW, listH));
@@ -3341,32 +3346,32 @@ public class TxAdminScreen extends Screen {
 
         switch (cat) {
             case "self" -> {
-                currentRows.add(new RowSpec("God Mode (Invulnerable & Auto-Feed)", "Blocks all damage, fire & hunger drain", List.of(
+                currentRows.add(new RowSpec("God Mode", "Blocks all damage & hunger drain", List.of(
                         new BtnSpec(god ? "GOD: ON" : "GOD: OFF", god ? 2 : 0, () -> sendSelf("god", "Toggled God Mode"))
                 )));
-                currentRows.add(new RowSpec("NoClip (Pass Through Walls)", "Switch between Spectator & Survival", List.of(
+                currentRows.add(new RowSpec("NoClip", "Switch Spectator / Survival", List.of(
                         new BtnSpec(noclip ? "NOCLIP: ON" : "NOCLIP: OFF", noclip ? 2 : 0, () -> sendSelf("noclip", "Toggled NoClip"))
                 )));
-                currentRows.add(new RowSpec("Survival Flight (/fly)", "Allow flying while in Survival Mode", List.of(
+                currentRows.add(new RowSpec("Survival Flight", "Allow flying in Survival mode", List.of(
                         new BtnSpec(fly ? "FLY: ON" : "FLY: OFF", fly ? 2 : 0, () -> sendSelf("fly", "Toggled Survival Flight"))
                 )));
-                currentRows.add(new RowSpec("Vanish (True Invisibility)", "Particle-free invisibility", List.of(
+                currentRows.add(new RowSpec("Vanish", "Particle-free invisibility", List.of(
                         new BtnSpec(vanish ? "VANISH: ON" : "VANISH: OFF", vanish ? 2 : 0, () -> sendSelf("vanish", "Toggled Vanish"))
                 )));
-                currentRows.add(new RowSpec("Fullbright Night Vision", "Infinite night vision without particles", List.of(
+                currentRows.add(new RowSpec("Night Vision", "Infinite fullbright without particles", List.of(
                         new BtnSpec(nv ? "NV: ON" : "NV: OFF", nv ? 2 : 0, () -> sendSelf("nv", "Toggled Night Vision"))
                 )));
-                currentRows.add(new RowSpec("Movement Speed Boost", "Active: " + (speed == 0 ? "1x (Normal)" : (1 << speed) + "x Boost"), List.of(
+                currentRows.add(new RowSpec("Movement Speed", "Active: " + (speed == 0 ? "1x Normal" : (1 << speed) + "x Boost"), List.of(
                         new BtnSpec("1x", speed == 0 ? 2 : 0, () -> sendSelf("speed0", "Speed: 1x (Normal)")),
                         new BtnSpec("2x", speed == 1 ? 2 : 0, () -> sendSelf("speed1", "Speed: 2x")),
                         new BtnSpec("4x", speed == 2 ? 2 : 0, () -> sendSelf("speed2", "Speed: 4x")),
                         new BtnSpec("8x", speed == 3 ? 2 : 0, () -> sendSelf("speed3", "Speed: 8x"))
                 )));
-                currentRows.add(new RowSpec("Heal, Feed & Cure Self", "Restore health/hunger or clear effects", List.of(
+                currentRows.add(new RowSpec("Health & Effects", "Restore health or clear potion FX", List.of(
                         new BtnSpec("Heal & Feed", 2, () -> sendSelf("heal", "Healed and fed self!")),
                         new BtnSpec("Clear FX", 0, () -> sendSelf("clearfx", "Cleared potion effects"))
                 )));
-                currentRows.add(new RowSpec("Personal Gamemode", "Active Mode: " + gmName(selfGm), List.of(
+                currentRows.add(new RowSpec("Personal Gamemode", "Mode: " + gmName(selfGm), List.of(
                         new BtnSpec("Surv", selfGm == 0 ? 2 : 0, () -> sendSelf("gms", "Personal Gamemode -> SURVIVAL")),
                         new BtnSpec("Creat", selfGm == 1 ? 2 : 0, () -> sendSelf("gmc", "Personal Gamemode -> CREATIVE")),
                         new BtnSpec("Adv", selfGm == 2 ? 2 : 0, () -> sendSelf("gma", "Personal Gamemode -> ADVENTURE")),
@@ -3374,47 +3379,47 @@ public class TxAdminScreen extends Screen {
                 )));
             }
             case "players" -> {
-                currentRows.add(new RowSpec("Teleport To / Bring / Return", "Target: " + tgt, List.of(
+                currentRows.add(new RowSpec("Teleportation", "Target: " + tgt, List.of(
                         new BtnSpec("TP To", 1, () -> sendPlayer("tpto", getSelectedPlayer(), "Teleported to " + getSelectedPlayer())),
                         new BtnSpec("Bring", 2, () -> sendPlayer("bring", getSelectedPlayer(), "Brought " + getSelectedPlayer())),
                         new BtnSpec("Return", 0, () -> sendPlayer("back", getSelectedPlayer(), "Returned " + getSelectedPlayer()))
                 )));
-                currentRows.add(new RowSpec("Spectate & Freeze Player", "Status: " + (tgtFrozen ? "FROZEN" : "Unfrozen"), List.of(
+                currentRows.add(new RowSpec("Spectate & Freeze", "Status: " + (tgtFrozen ? "FROZEN" : "Unfrozen"), List.of(
                         new BtnSpec("Spectate", 1, () -> {
                             sendPlayer("spectate", getSelectedPlayer(), "Spectating " + getSelectedPlayer());
                             this.onClose();
                         }),
                         new BtnSpec(tgtFrozen ? "FROZEN: ON" : "Freeze", tgtFrozen ? 2 : 3, () -> sendPlayer("freeze", getSelectedPlayer(), "Toggled Freeze on " + getSelectedPlayer()))
                 )));
-                currentRows.add(new RowSpec("Inspect Inventory & EnderChest", "View or edit live slots of " + tgt, List.of(
+                currentRows.add(new RowSpec("Inventory & EnderChest", "Inspect live slots of " + tgt, List.of(
                         new BtnSpec("InvSee", 1, () -> sendPlayer("invsee", getSelectedPlayer(), "Opened Inventory of " + getSelectedPlayer())),
                         new BtnSpec("EnderSee", 0, () -> sendPlayer("endersee", getSelectedPlayer(), "Opened EnderChest of " + getSelectedPlayer()))
                 )));
-                currentRows.add(new RowSpec("Heal, Deaths & Lootr", "Restore health or inspect deaths", List.of(
-                        new BtnSpec("Heal & Feed", 2, () -> sendPlayer("heal", getSelectedPlayer(), "Healed " + getSelectedPlayer())),
+                currentRows.add(new RowSpec("Heal, Deaths & Lootr", "Care & recovery for " + tgt, List.of(
+                        new BtnSpec("Heal", 2, () -> sendPlayer("heal", getSelectedPlayer(), "Healed " + getSelectedPlayer())),
                         new BtnSpec("Deaths", 1, () -> {
                             sendCmd("deathhistory " + getSelectedPlayer(), "Opening Death History");
                             this.onClose();
                         }),
                         new BtnSpec("Reset Lootr", 0, () -> sendCmd("lootr clear " + getSelectedPlayer(), "Reset Lootr for " + getSelectedPlayer()))
                 )));
-                currentRows.add(new RowSpec("Target Gamemode (" + tgt + ")", "Current Mode: " + (tgtGm >= 0 ? gmName(tgtGm) : "All Players"), List.of(
+                currentRows.add(new RowSpec("Target Gamemode", tgt + ": " + (tgtGm >= 0 ? gmName(tgtGm) : "All Players"), List.of(
                         new BtnSpec("Surv", tgtGm == 0 ? 2 : 0, () -> sendPlayer("gms", getSelectedPlayer(), "Set " + getSelectedPlayer() + " -> SURVIVAL")),
                         new BtnSpec("Creat", tgtGm == 1 ? 2 : 0, () -> sendPlayer("gmc", getSelectedPlayer(), "Set " + getSelectedPlayer() + " -> CREATIVE")),
                         new BtnSpec("Adv", tgtGm == 2 ? 2 : 0, () -> sendPlayer("gma", getSelectedPlayer(), "Set " + getSelectedPlayer() + " -> ADVENTURE")),
                         new BtnSpec("Spec", tgtGm == 3 ? 2 : 0, () -> sendPlayer("gmsp", getSelectedPlayer(), "Set " + getSelectedPlayer() + " -> SPECTATOR"))
                 )));
-                currentRows.add(new RowSpec("Voice Chat Moderation (/vcd)", "Mute or unmute proximity voice", List.of(
+                currentRows.add(new RowSpec("Voice Moderation", "Mute or unmute proximity voice", List.of(
                         new BtnSpec("Mute 15m", 3, () -> sendCmd("vcd mute " + getSelectedPlayer() + " 15m Admin_Mute", "Voice muted " + getSelectedPlayer())),
                         new BtnSpec("Unmute", 2, () -> sendCmd("vcd unmute " + getSelectedPlayer(), "Voice unmuted " + getSelectedPlayer()))
                 )));
                 currentRows.add(new RowSpec("Operator & Whitelist", "Role: " + (tgtOp ? "Server OP" : "Player"), List.of(
                         new BtnSpec(tgtOp ? "OP: YES" : "OP", tgtOp ? 2 : 0, () -> sendCmd("op " + getSelectedPlayer(), "Granted OP to " + getSelectedPlayer())),
                         new BtnSpec("De-OP", 0, () -> sendCmd("deop " + getSelectedPlayer(), "Removed OP from " + getSelectedPlayer())),
-                        new BtnSpec("WL Add", 1, () -> sendCmd("whitelist add " + getSelectedPlayer(), "Whitelisted " + getSelectedPlayer())),
-                        new BtnSpec("WL Rem", 0, () -> sendCmd("whitelist remove " + getSelectedPlayer(), "Removed from Whitelist"))
+                        new BtnSpec("WL+", 1, () -> sendCmd("whitelist add " + getSelectedPlayer(), "Whitelisted " + getSelectedPlayer())),
+                        new BtnSpec("WL-", 0, () -> sendCmd("whitelist remove " + getSelectedPlayer(), "Removed from Whitelist"))
                 )));
-                currentRows.add(new RowSpec("Kick & Ban (Uses Top Input Box)", "Disconnect or ban Target Player", List.of(
+                currentRows.add(new RowSpec("Kick & Ban", "Uses input bar reason if filled", List.of(
                         new BtnSpec("Kick", 1, () -> sendCmd("kick " + getSelectedPlayer() + " " + getInputOrDefault("Kicked by Admin"), "Kicked " + getSelectedPlayer())),
                         new BtnSpec("Ban", 3, () -> sendCmd("ban " + getSelectedPlayer() + " " + getInputOrDefault("Banned by Admin"), "Banned " + getSelectedPlayer())),
                         new BtnSpec("Unban", 2, () -> sendCmd("pardon " + getSelectedPlayer(), "Unbanned " + getSelectedPlayer()))
@@ -3424,27 +3429,27 @@ public class TxAdminScreen extends Screen {
                 if (selectedPresetIdx >= localPresets.size()) selectedPresetIdx = 0;
                 LocalPreset curPre = localPresets.isEmpty() ? null : localPresets.get(selectedPresetIdx);
                 String preSub = curPre != null
-                        ? "Preset (" + (selectedPresetIdx + 1) + "/" + localPresets.size() + "): " + curPre.name() + " [" + (curPre.slim() ? "Slim" : "Default") + "]"
-                        : "No saved presets yet — save in Launcher or click Save Skin";
+                        ? (selectedPresetIdx + 1) + "/" + localPresets.size() + ": " + curPre.name() + " (" + (curPre.slim() ? "Slim" : "4px") + ")"
+                        : "Save presets in Launcher Skin Studio";
 
-                currentRows.add(new RowSpec("My Skin Presets (From Launcher)", preSub, List.of(
+                currentRows.add(new RowSpec("Skin Presets", preSub, List.of(
                         new BtnSpec("<", 0, () -> cyclePreset(-1)),
                         new BtnSpec(">", 0, () -> cyclePreset(1)),
-                        new BtnSpec("Equip Me", 2, () -> {
+                        new BtnSpec("Me", 2, () -> {
                             if (curPre != null && SkinClientManager.equipPreset(curPre, "")) {
                                 statusText = "Equipped preset '" + curPre.name() + "' on yourself!";
                             } else {
                                 statusText = "No preset selected or file missing.";
                             }
                         }),
-                        new BtnSpec("To Target", 1, () -> {
+                        new BtnSpec("Target", 1, () -> {
                             if (curPre != null && SkinClientManager.equipPreset(curPre, getSelectedPlayer())) {
                                 statusText = "Applied preset '" + curPre.name() + "' to " + getSelectedPlayer() + "!";
                             } else {
                                 statusText = "No preset selected.";
                             }
                         }),
-                        new BtnSpec("Save Skin", 0, () -> {
+                        new BtnSpec("Save", 0, () -> {
                             String pName = getInputOrDefault(getSelectedPlayer() + "_Skin");
                             if (SkinClientManager.saveSkinAsPreset(getSelectedPlayer(), pName)) {
                                 this.localPresets = SkinClientManager.loadLocalPresets();
@@ -3458,10 +3463,10 @@ public class TxAdminScreen extends Screen {
                 )));
 
                 boolean isSlim = SkinClientManager.isPlayerSlim(tgt);
-                currentRows.add(new RowSpec("Fetch Skin by Nick / Arm Model (" + tgt + ")", "Top Box = Mojang Nick · Arms: " + (isSlim ? "Slim 3px" : "Default 4px"), List.of(
-                        new BtnSpec("Fetch Nick", 1, () -> sendChar("fetchskin:" + getInputOrDefault(myName), getSelectedPlayer(), "Fetching Mojang skin for " + getSelectedPlayer())),
-                        new BtnSpec("Default 4px", !isSlim ? 2 : 0, () -> sendChar("arm:default", getSelectedPlayer(), "Set Default (4px) arms for " + getSelectedPlayer())),
-                        new BtnSpec("Slim 3px", isSlim ? 2 : 0, () -> sendChar("arm:slim", getSelectedPlayer(), "Set Slim (3px) arms for " + getSelectedPlayer())),
+                currentRows.add(new RowSpec("Mojang Skin & Arms", tgt + " · " + (isSlim ? "Slim 3px" : "Default 4px"), List.of(
+                        new BtnSpec("Fetch", 1, () -> sendChar("fetchskin:" + getInputOrDefault(myName), getSelectedPlayer(), "Fetching Mojang skin for " + getSelectedPlayer())),
+                        new BtnSpec("4px", !isSlim ? 2 : 0, () -> sendChar("arm:default", getSelectedPlayer(), "Set Default (4px) arms for " + getSelectedPlayer())),
+                        new BtnSpec("Slim", isSlim ? 2 : 0, () -> sendChar("arm:slim", getSelectedPlayer(), "Set Slim (3px) arms for " + getSelectedPlayer())),
                         new BtnSpec("Reset", 0, () -> sendChar("skinreset", getSelectedPlayer(), "Reset skin for " + getSelectedPlayer()))
                 )));
 
@@ -3473,13 +3478,13 @@ public class TxAdminScreen extends Screen {
                 boolean tabHid = prof != null && prof.tabHidden();
                 String curTeam = (prof != null && !prof.teamName().isBlank()) ? prof.teamName() : "None";
 
-                currentRows.add(new RowSpec("Change Nickname (Uses Top Input Box)", "Target (" + tgt + ") Active Nick: " + curNick, List.of(
-                        new BtnSpec("Set My Nick", 1, () -> sendChar("nick:" + getInputOrDefault(myName), myName, "Changed your nickname to " + getInputOrDefault(myName))),
-                        new BtnSpec("Set Target Nick", 2, () -> sendChar("nick:" + getInputOrDefault(getSelectedPlayer()), getSelectedPlayer(), "Changed " + getSelectedPlayer() + "'s nick to " + getInputOrDefault(getSelectedPlayer()))),
-                        new BtnSpec("Reset Nick", 0, () -> sendChar("nickreset", getSelectedPlayer(), "Reset nickname for " + getSelectedPlayer()))
+                currentRows.add(new RowSpec("Nickname", tgt + " -> " + curNick, List.of(
+                        new BtnSpec("My Nick", 1, () -> sendChar("nick:" + getInputOrDefault(myName), myName, "Changed your nickname to " + getInputOrDefault(myName))),
+                        new BtnSpec("Set Target", 2, () -> sendChar("nick:" + getInputOrDefault(getSelectedPlayer()), getSelectedPlayer(), "Changed " + getSelectedPlayer() + "'s nick to " + getInputOrDefault(getSelectedPlayer()))),
+                        new BtnSpec("Reset", 0, () -> sendChar("nickreset", getSelectedPlayer(), "Reset nickname for " + getSelectedPlayer()))
                 )));
 
-                currentRows.add(new RowSpec("Nickname Color (" + tgt + ")", "Click any color to style " + tgt + "'s nickname", List.of(
+                currentRows.add(new RowSpec("Primary Colors", tgt + " nickname palette", List.of(
                         new BtnSpec("Gold", "6".equals(curCol) ? 2 : 1, () -> sendChar("color:6", getSelectedPlayer(), "Color -> Gold")),
                         new BtnSpec("Red", "c".equals(curCol) ? 2 : 3, () -> sendChar("color:c", getSelectedPlayer(), "Color -> Red")),
                         new BtnSpec("Aqua", "b".equals(curCol) ? 2 : 0, () -> sendChar("color:b", getSelectedPlayer(), "Color -> Aqua")),
@@ -3489,7 +3494,7 @@ public class TxAdminScreen extends Screen {
                         new BtnSpec("White", "f".equals(curCol) ? 2 : 0, () -> sendChar("color:f", getSelectedPlayer(), "Color -> White"))
                 )));
 
-                currentRows.add(new RowSpec("More Nick Colors & Bold (" + tgt + ")", "Additional shades + Bold toggle", List.of(
+                currentRows.add(new RowSpec("Extra Colors & Bold", "Deep shades + weight", List.of(
                         new BtnSpec("Blue", "9".equals(curCol) ? 2 : 0, () -> sendChar("color:9", getSelectedPlayer(), "Color -> Blue")),
                         new BtnSpec("DkRed", "4".equals(curCol) ? 2 : 0, () -> sendChar("color:4", getSelectedPlayer(), "Color -> Dark Red")),
                         new BtnSpec("DkPurp", "5".equals(curCol) ? 2 : 0, () -> sendChar("color:5", getSelectedPlayer(), "Color -> Dark Purple")),
@@ -3498,35 +3503,35 @@ public class TxAdminScreen extends Screen {
                         new BtnSpec(isBold ? "BOLD: ON" : "Bold", isBold ? 2 : 0, () -> sendChar("bold:toggle", getSelectedPlayer(), "Toggled Bold Nickname"))
                 )));
 
-                currentRows.add(new RowSpec("Change ALL Players' Nickname Colors", "Apply uniform nickname color to everyone", List.of(
-                        new BtnSpec("All Gold", 1, () -> sendChar("allcolor:6", "@a", "Set ALL players' nickname color to Gold!")),
-                        new BtnSpec("All Red", 3, () -> sendChar("allcolor:c", "@a", "Set ALL players' nickname color to Red!")),
-                        new BtnSpec("All Aqua", 0, () -> sendChar("allcolor:b", "@a", "Set ALL players' nickname color to Aqua!")),
-                        new BtnSpec("All Green", 2, () -> sendChar("allcolor:a", "@a", "Set ALL players' nickname color to Green!")),
-                        new BtnSpec("All White", 0, () -> sendChar("allcolor:f", "@a", "Reset ALL players' nickname color to White"))
+                currentRows.add(new RowSpec("All Players Color", "Uniform color for everyone", List.of(
+                        new BtnSpec("Gold", 1, () -> sendChar("allcolor:6", "@a", "Set ALL players' nickname color to Gold!")),
+                        new BtnSpec("Red", 3, () -> sendChar("allcolor:c", "@a", "Set ALL players' nickname color to Red!")),
+                        new BtnSpec("Aqua", 0, () -> sendChar("allcolor:b", "@a", "Set ALL players' nickname color to Aqua!")),
+                        new BtnSpec("Green", 2, () -> sendChar("allcolor:a", "@a", "Set ALL players' nickname color to Green!")),
+                        new BtnSpec("White", 0, () -> sendChar("allcolor:f", "@a", "Reset ALL players' nickname color to White"))
                 )));
 
                 String opLabel = switch (opMode) {
-                    case 1 -> "50% Faded (Sneak Style)";
-                    case 2 -> "0% Hidden";
-                    default -> "100% Full Visibility";
+                    case 1 -> "50% Faded";
+                    case 2 -> "Hidden (0%)";
+                    default -> "100% Visible";
                 };
-                currentRows.add(new RowSpec("Nickname Opacity (" + tgt + ")", "Above-head nametag: " + opLabel, List.of(
-                        new BtnSpec("100% Full", opMode == 0 ? 2 : 0, () -> sendChar("opacity:0", getSelectedPlayer(), "Nametag Opacity -> 100% Full")),
-                        new BtnSpec("50% Faded", opMode == 1 ? 2 : 0, () -> sendChar("opacity:1", getSelectedPlayer(), "Nametag Opacity -> 50% Faded")),
-                        new BtnSpec("0% Hidden", opMode == 2 ? 3 : 0, () -> sendChar("opacity:2", getSelectedPlayer(), "Nametag Opacity -> 0% Hidden"))
+                currentRows.add(new RowSpec("Nametag Opacity", tgt + ": " + opLabel, List.of(
+                        new BtnSpec("100%", opMode == 0 ? 2 : 0, () -> sendChar("opacity:0", getSelectedPlayer(), "Nametag Opacity -> 100% Full")),
+                        new BtnSpec("50%", opMode == 1 ? 2 : 0, () -> sendChar("opacity:1", getSelectedPlayer(), "Nametag Opacity -> 50% Faded")),
+                        new BtnSpec("0% Off", opMode == 2 ? 3 : 0, () -> sendChar("opacity:2", getSelectedPlayer(), "Nametag Opacity -> 0% Hidden"))
                 )));
 
                 CharProfile selfProf = CharCustomClientManager.getProfile(myName);
                 boolean selfTabHid = selfProf != null && selfProf.tabHidden();
-                currentRows.add(new RowSpec("TAB Menu Visibility (" + tgt + ")", "Target in TAB: " + (tabHid ? "HIDDEN" : "VISIBLE"), List.of(
-                        new BtnSpec(tabHid ? "TAB: HIDDEN" : "Hide Target", tabHid ? 3 : 0, () -> sendChar("tab:toggle", getSelectedPlayer(), "Toggled TAB visibility for " + getSelectedPlayer())),
-                        new BtnSpec(selfTabHid ? "Me: HIDDEN" : "Hide Me", selfTabHid ? 3 : 0, () -> sendChar("tab:toggle", myName, "Toggled your own TAB visibility")),
-                        new BtnSpec("Show All", 2, () -> sendChar("tab:showall", "@a", "All players visible in TAB menu")),
-                        new BtnSpec("Hide All", 0, () -> sendChar("tab:hideall", "@a", "All players hidden in TAB menu"))
+                currentRows.add(new RowSpec("TAB Visibility", tgt + ": " + (tabHid ? "HIDDEN" : "VISIBLE"), List.of(
+                        new BtnSpec(tabHid ? "Show Tgt" : "Hide Tgt", tabHid ? 3 : 0, () -> sendChar("tab:toggle", getSelectedPlayer(), "Toggled TAB visibility for " + getSelectedPlayer())),
+                        new BtnSpec(selfTabHid ? "Show Me" : "Hide Me", selfTabHid ? 3 : 0, () -> sendChar("tab:toggle", myName, "Toggled your own TAB visibility")),
+                        new BtnSpec("All On", 2, () -> sendChar("tab:showall", "@a", "All players visible in TAB menu")),
+                        new BtnSpec("All Off", 0, () -> sendChar("tab:hideall", "@a", "All players hidden in TAB menu"))
                 )));
 
-                currentRows.add(new RowSpec("Assign to Colored Team (" + tgt + ")", "Active Team: " + curTeam, List.of(
+                currentRows.add(new RowSpec("Preset Teams", "Active: " + curTeam, List.of(
                         new BtnSpec("Red", "Red".equalsIgnoreCase(curTeam) ? 2 : 3, () -> sendChar("team:Red:c", getSelectedPlayer(), "Joined " + getSelectedPlayer() + " to Red Team")),
                         new BtnSpec("Blue", "Blue".equalsIgnoreCase(curTeam) ? 2 : 0, () -> sendChar("team:Blue:9", getSelectedPlayer(), "Joined " + getSelectedPlayer() + " to Blue Team")),
                         new BtnSpec("Gold", "Gold".equalsIgnoreCase(curTeam) ? 2 : 1, () -> sendChar("team:Gold:6", getSelectedPlayer(), "Joined " + getSelectedPlayer() + " to Gold Team")),
@@ -3535,20 +3540,20 @@ public class TxAdminScreen extends Screen {
                         new BtnSpec("Leave", 0, () -> sendChar("teamleave", getSelectedPlayer(), "Removed " + getSelectedPlayer() + " from team"))
                 )));
 
-                currentRows.add(new RowSpec("Create Custom Team (Uses Top Input Box)", "Type Team Name in top box & pick color", List.of(
+                currentRows.add(new RowSpec("Custom Team", "Type name above & pick color", List.of(
                         new BtnSpec("+Gold", 1, () -> sendChar("mkteam:6:" + getInputOrDefault("VIP"), getSelectedPlayer(), "Created/Joined Gold team '" + getInputOrDefault("VIP") + "'")),
                         new BtnSpec("+Red", 3, () -> sendChar("mkteam:c:" + getInputOrDefault("Red"), getSelectedPlayer(), "Created/Joined Red team '" + getInputOrDefault("Red") + "'")),
                         new BtnSpec("+Aqua", 0, () -> sendChar("mkteam:b:" + getInputOrDefault("Aqua"), getSelectedPlayer(), "Created/Joined Aqua team '" + getInputOrDefault("Aqua") + "'")),
                         new BtnSpec("+Green", 2, () -> sendChar("mkteam:a:" + getInputOrDefault("Squad"), getSelectedPlayer(), "Created/Joined Green team '" + getInputOrDefault("Squad") + "'")),
-                        new BtnSpec("Clear All", 0, () -> sendChar("clearteams", "@a", "Cleared all custom teams"))
+                        new BtnSpec("Clear", 0, () -> sendChar("clearteams", "@a", "Cleared all custom teams"))
                 )));
 
-                currentRows.add(new RowSpec("Team PVP & Nametag Rules", "Friendly fire & team nametag visibility", List.of(
-                        new BtnSpec("PVP: ON", 2, () -> sendChar("teampvp:on", "@a", "Team Friendly Fire: ON")),
-                        new BtnSpec("PVP: OFF", 3, () -> sendChar("teampvp:off", "@a", "Team Friendly Fire: OFF")),
-                        new BtnSpec("Tags: All", 0, () -> sendChar("teamvis:always", "@a", "Team Nametags: Always Visible")),
-                        new BtnSpec("Tags: Team", 1, () -> sendChar("teamvis:own", "@a", "Team Nametags: Own Team Only")),
-                        new BtnSpec("Tags: Off", 0, () -> sendChar("teamvis:never", "@a", "Team Nametags: Hidden"))
+                currentRows.add(new RowSpec("Team Rules", "Friendly fire & nametags", List.of(
+                        new BtnSpec("PVP On", 2, () -> sendChar("teampvp:on", "@a", "Team Friendly Fire: ON")),
+                        new BtnSpec("PVP Off", 3, () -> sendChar("teampvp:off", "@a", "Team Friendly Fire: OFF")),
+                        new BtnSpec("Tags All", 0, () -> sendChar("teamvis:always", "@a", "Team Nametags: Always Visible")),
+                        new BtnSpec("Own Only", 1, () -> sendChar("teamvis:own", "@a", "Team Nametags: Own Team Only")),
+                        new BtnSpec("Tags Off", 0, () -> sendChar("teamvis:never", "@a", "Team Nametags: Hidden"))
                 )));
             }
             case "world" -> {
@@ -3706,8 +3711,8 @@ public class TxAdminScreen extends Screen {
     }
 
     private void clampScroll() {
-        int totalH = currentRows.size() * 28;
-        int maxScroll = Math.max(0, totalH - this.listH + 6);
+        int totalH = currentRows.size() * ROW_PITCH;
+        int maxScroll = Math.max(0, totalH - this.listH + 8);
         if (this.scrollOffset < 0) this.scrollOffset = 0;
         if (this.scrollOffset > maxScroll) this.scrollOffset = maxScroll;
     }
@@ -3719,24 +3724,38 @@ public class TxAdminScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+        // Clean unified container + subtle hairline dividers
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, COL_BG);
 
-        g.fill(panelX, panelY, panelX + panelW, panelY + 30, COL_SURFACE);
-        g.text(this.font, "THE NEST — Admin", panelX + 8, panelY + 11, 0xFFFFFFFF, false);
+        // Header surface + gold vertical accent mark
+        g.fill(panelX, panelY, panelX + panelW, panelY + 32, COL_SURFACE);
+        g.fill(panelX, panelY + 32, panelX + panelW, panelY + 33, COL_DIVIDER);
+        g.fill(panelX + 8, panelY + 10, panelX + 10, panelY + 23, COL_ACCENT);
+        g.text(this.font, "THE NEST", panelX + 15, panelY + 9, COL_TEXT, false);
+        g.text(this.font, "Admin", panelX + 15, panelY + 18, COL_MUTED, false);
 
-        int tpX = panelX + 112;
+        // Target player readout pill in header center
         int tpY = panelY + 8;
-        g.fill(tpX + 15, tpY, tpX + 94, tpY + 16, COL_INPUT_BG);
-        String pName = this.font.plainSubstrByWidth(getSelectedPlayer(), 72);
-        int pTx = tpX + 15 + (79 - this.font.width(pName)) / 2;
-        g.text(this.font, pName, pTx, tpY + 4, 0xFFFFFFFF, false);
+        int tpX = panelX + Math.max(132, (panelW - 144) / 2 - 20);
+        g.fill(tpX + 18, tpY, tpX + 104, tpY + 17, COL_INPUT_BG);
+        String pName = this.font.plainSubstrByWidth(getSelectedPlayer(), 78);
+        int pTx = tpX + 18 + (86 - this.font.width(pName)) / 2;
+        g.text(this.font, pName, pTx, tpY + 5, COL_TEXT, false);
 
+        // Left sidebar surface + hairline right divider
         g.fill(sideX, sideY, sideX + sideW, sideY + sideH, COL_SURFACE);
-        g.text(this.font, "CATEGORIES", sideX + 6, sideY + 5, 0xFFFFFFFF, false);
+        g.fill(sideX + sideW, sideY, sideX + sideW + 1, sideY + sideH, COL_DIVIDER);
 
-        int fy = panelY + panelH - 15;
+        // Input bar subtle container backdrop & bottom hairline
+        g.fill(listX, sideY, listX + listW, sideY + 18, COL_INPUT_BG);
+        g.fill(listX, sideY + 18, listX + listW, sideY + 19,
+                (this.inputBox != null && this.inputBox.isFocused()) ? COL_ACCENT : COL_DIVIDER);
+
+        // Footer bar
+        int fy = panelY + panelH - 18;
+        g.fill(panelX, fy - 1, panelX + panelW, fy, COL_DIVIDER);
         g.fill(panelX, fy, panelX + panelW, panelY + panelH, COL_SURFACE);
-        g.text(this.font, this.font.plainSubstrByWidth(statusText, panelW - 16), panelX + 8, fy + 4, 0xFFFFFFFF, false);
+        g.text(this.font, this.font.plainSubstrByWidth(statusText, panelW - 18), panelX + 9, fy + 5, COL_MUTED, false);
 
         super.extractRenderState(g, mouseX, mouseY, partialTick);
     }
@@ -3744,7 +3763,7 @@ public class TxAdminScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (mouseX >= listX && mouseX <= listX + listW && mouseY >= listY && mouseY <= listY + listH) {
-            this.scrollOffset -= scrollY * 18.0;
+            this.scrollOffset -= scrollY * 22.0;
             clampScroll();
             return true;
         }
@@ -3766,12 +3785,18 @@ public class TxAdminScreen extends Screen {
     private final class TxButton extends AbstractWidget {
         private final String label;
         private int style;
+        private final boolean sidebarTab;
         private final Runnable onPress;
 
         TxButton(int x, int y, int w, int h, String label, int style, Runnable onPress) {
+            this(x, y, w, h, label, style, false, onPress);
+        }
+
+        TxButton(int x, int y, int w, int h, String label, int style, boolean sidebarTab, Runnable onPress) {
             super(x, y, w, h, Component.literal(label));
             this.label = label;
             this.style = style;
+            this.sidebarTab = sidebarTab;
             this.onPress = onPress;
         }
 
@@ -3793,8 +3818,22 @@ public class TxAdminScreen extends Screen {
             int w = this.getWidth();
             int h = this.getHeight();
             boolean hov = this.isHoveredOrFocused();
+            if (sidebarTab) {
+                boolean active = (style == 1);
+                int bg = active ? 0xFF2B2118 : (hov ? 0xFF251C15 : 0x00000000);
+                if (bg != 0) {
+                    g.fill(x, y, x + w, y + h, bg);
+                }
+                if (active) {
+                    g.fill(x, y + 3, x + 2, y + h - 3, COL_ACCENT);
+                }
+                int fg = active ? COL_ACCENT : (hov ? COL_TEXT : COL_MUTED);
+                int ty = y + (h - 8) / 2;
+                g.text(TxAdminScreen.this.font, label, x + 9, ty, fg, false);
+                return;
+            }
             int bg;
-            int fg = 0xFFFFFFFF;
+            int fg = COL_TEXT;
             if (style == 1) {
                 bg = hov ? COL_GOLD_HOVER : COL_GOLD_BTN;
             } else if (style == 2) {
@@ -3802,7 +3841,7 @@ public class TxAdminScreen extends Screen {
             } else if (style == 3) {
                 bg = hov ? COL_RED_HOVER : COL_RED;
             } else {
-                bg = hov ? 0xFF3E3024 : COL_SURFACE_ALT;
+                bg = hov ? 0xFF3A2D23 : COL_SURFACE_ALT;
             }
             g.fill(x, y, x + w, y + h, bg);
             int tx = x + (w - TxAdminScreen.this.font.width(label)) / 2;
@@ -3849,8 +3888,9 @@ public class TxAdminScreen extends Screen {
             g.enableScissor(x, y, x + w, y + h);
             int ry = (int) Math.round(y + 4 - scrollOffset);
             for (RowSpec row : currentRows) {
-                if (ry + 25 >= y && ry <= y + h) {
-                    g.fill(x + 4, ry, x + w - 8, ry + 25, COL_SURFACE);
+                if (ry + ROW_H >= y && ry <= y + h) {
+                    boolean rowHov = mouseX >= x + 4 && mouseX < x + w - 8 && mouseY >= ry && mouseY < ry + ROW_H;
+                    g.fill(x + 4, ry, x + w - 8, ry + ROW_H, rowHov ? 0xFF261D17 : COL_ROW_BG);
 
                     int bx = x + w - 12;
                     List<BtnSpec> btns = row.buttons();
@@ -3858,11 +3898,10 @@ public class TxAdminScreen extends Screen {
                         BtnSpec spec = btns.get(b);
                         int bw = Math.max(24, TxAdminScreen.this.font.width(spec.label()) + 10);
                         bx -= bw;
-                        int by = ry + 4;
-                        boolean visibleInClip = (by >= y && by + 17 <= y + h);
-                        boolean hov = visibleInClip && mouseX >= bx && mouseX < bx + bw && mouseY >= by && mouseY < by + 17;
+                        int by = ry + 6;
+                        boolean visibleInClip = (by >= y && by + 18 <= y + h);
+                        boolean hov = visibleInClip && mouseX >= bx && mouseX < bx + bw && mouseY >= by && mouseY < by + 18;
                         int bg;
-                        int fg = 0xFFFFFFFF;
                         if (spec.style() == 1) {
                             bg = hov ? COL_GOLD_HOVER : COL_GOLD_BTN;
                         } else if (spec.style() == 2) {
@@ -3870,35 +3909,35 @@ public class TxAdminScreen extends Screen {
                         } else if (spec.style() == 3) {
                             bg = hov ? COL_RED_HOVER : COL_RED;
                         } else {
-                            bg = hov ? 0xFF3E3024 : COL_SURFACE_ALT;
+                            bg = hov ? 0xFF3A2D23 : COL_SURFACE_ALT;
                         }
-                        g.fill(bx, by, bx + bw, by + 17, bg);
+                        g.fill(bx, by, bx + bw, by + 18, bg);
                         int tx = bx + (bw - TxAdminScreen.this.font.width(spec.label())) / 2;
-                        g.text(TxAdminScreen.this.font, spec.label(), tx, by + 5, fg, false);
+                        g.text(TxAdminScreen.this.font, spec.label(), tx, by + 5, COL_TEXT, false);
                         if (visibleInClip) {
-                            listHits.add(new HitBox(bx, by, bw, 17, spec.action()));
+                            listHits.add(new HitBox(bx, by, bw, 18, spec.action()));
                         }
                         bx -= 3;
                     }
 
-                    int maxTextW = Math.max(40, bx - (x + 12));
+                    int maxTextW = Math.max(48, bx - (x + 14));
                     String clippedTitle = TxAdminScreen.this.font.plainSubstrByWidth(row.title(), maxTextW);
                     String clippedSub = TxAdminScreen.this.font.plainSubstrByWidth(row.subtitle(), maxTextW);
-                    g.text(TxAdminScreen.this.font, clippedTitle, x + 9, ry + 4, 0xFFFFFFFF, false);
-                    g.text(TxAdminScreen.this.font, clippedSub, x + 9, ry + 14, COL_MUTED, false);
+                    g.text(TxAdminScreen.this.font, clippedTitle, x + 10, ry + 6, COL_TEXT, false);
+                    g.text(TxAdminScreen.this.font, clippedSub, x + 10, ry + 16, COL_MUTED, false);
                 }
-                ry += 28;
+                ry += ROW_PITCH;
             }
             g.disableScissor();
 
-            int totalH = currentRows.size() * 28;
+            int totalH = currentRows.size() * ROW_PITCH;
             if (totalH > h) {
-                int sbX = x + w - 5;
+                int sbX = x + w - 4;
                 int thumbH = Math.max(16, (int) ((double) h * h / totalH));
-                int maxScroll = totalH - h + 6;
-                int thumbY = y + 2 + (int) ((scrollOffset / maxScroll) * (h - 4 - thumbH));
-                g.fill(sbX, y + 2, sbX + 3, y + h - 2, 0x55000000);
-                g.fill(sbX, thumbY, sbX + 3, thumbY + thumbH, COL_ACCENT);
+                int maxScroll = totalH - h + 8;
+                int thumbY = y + 3 + (int) ((scrollOffset / maxScroll) * (h - 6 - thumbH));
+                g.fill(sbX, y + 3, sbX + 2, y + h - 3, 0x33000000);
+                g.fill(sbX, thumbY, sbX + 2, thumbY + thumbH, COL_ACCENT);
             }
         }
 

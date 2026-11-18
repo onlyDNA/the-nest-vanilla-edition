@@ -11,6 +11,7 @@ LIVE_INSTANCE = r"C:\Users\katen\curseforge\minecraft\Instances\The Nest Vanilla
 PACK_DIR = os.path.join(WORKSPACE_DIR, "pack")
 MANIFEST_PATH = os.path.join(WORKSPACE_DIR, "pack-manifest.json")
 LAUNCHER_CFG = os.path.join(WORKSPACE_DIR, "client_launcher", "launcher_config.json")
+LAUNCHER_EXE_PATH = os.path.join(WORKSPACE_DIR, "release", "The Nest Launcher.exe")
 
 MANAGED_DIRS = ("mods", "config", "resourcepacks", "defaultconfigs")
 ROOT_FILES = ("servers.dat",)
@@ -88,9 +89,14 @@ def sync_pack() -> dict:
             "size": size,
         }
 
+    launcher_sha = sha256_file(LAUNCHER_EXE_PATH) if os.path.exists(LAUNCHER_EXE_PATH) else ""
     manifest = {
         "pack_name": cfg.get("pack_name", "The Nest Vanilla Edition"),
         "pack_version": cfg.get("pack_version", "1.0.0"),
+        "launcher_version": cfg.get("launcher_version", "1.1.0"),
+        "launcher_sha256": launcher_sha,
+        "launcher_url": cfg.get("launcher_url", ""),
+        "server_address": cfg.get("server_address", ""),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "mc_version": cfg.get("mc_version", "26.3"),
         "neoforge_version": cfg.get("neoforge_version", "26.3.0.103"),

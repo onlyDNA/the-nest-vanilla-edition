@@ -23,5 +23,6 @@ client_launcher/launcher_state.json
 client_launcher/.test_check*
 build/
 dist/
-release/
+release/*
+!release/The Nest Launcher.exe
 *.spec

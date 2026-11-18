@@ -3,7 +3,8 @@
         "first_run": false
     },
     "GuiSettings": {
-        "continuous_crafting_saved_value": false
+        "continuous_crafting_saved_value": false,
+        "enable_profiles_ui": false
     },
     "AutoRefillSettings": {
         "auto_refill_enable_indicator_icons": {
