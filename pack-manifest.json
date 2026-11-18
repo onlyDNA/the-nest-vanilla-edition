@@ -5,7 +5,7 @@
   "launcher_sha256": "6fe7cd191019e91ec9ffd0380bd26a42bf83d87cbb752f92750220b06c0cc0e8",
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Launcher.exe",
   "server_address": "192.168.1.77:25565",
-  "generated_at": "2026-11-18T22:08:00Z",
+  "generated_at": "2026-11-18T22:26:18Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -16,7 +16,7 @@
     "defaultconfigs"
   ],
   "total_files": 475,
-  "total_bytes": 459018308,
+  "total_bytes": 459018347,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -351,7 +351,7 @@
       "size": 809
     },
     "config/fml.toml": {
-      "sha256": "21b49d841aa33b0e9db539baca7b9c81a871a5f21b3e98a37042443ebeed7de0",
+      "sha256": "52275fedb38f5bb74891ed058c479dd1cca6076c70227948a79e41b9e3a46783",
       "size": 1541
     },
     "config/footprintparticle.json": {
@@ -515,8 +515,8 @@
       "size": 1452
     },
     "config/modernfix-mixins.properties": {
-      "sha256": "aa677312a836fa771aaedaa90cf3e77166b9b440f5dffcdfa5c1db67fa0180fe",
-      "size": 4801
+      "sha256": "94d65457d8d94236140cda44ff4e372fb1d7438624f8203964a411b704da29b2",
+      "size": 4839
     },
     "config/moogs_structures.json": {
       "sha256": "67e258d9bbfe88b87458902f47f1f3e4da91c35ad7413e94f9a93f416d786cc7",
@@ -663,7 +663,7 @@
       "size": 258
     },
     "config/sodium-options.json": {
-      "sha256": "3243c2f2167d05b8445c90af490c069cc838e5afab3b54914c49c494eb6dbb7d",
+      "sha256": "a254b8f531a8cef6ade6f1b860e80ee4cfbf5fb5905d0963c24b121c4f6518a2",
       "size": 743
     },
     "config/sophisticatedbackpacks-local.toml": {
@@ -967,12 +967,12 @@
       "size": 3212
     },
     "config/voxy-config.json": {
-      "sha256": "f8ee62510a2c3ac2893b555b284e5e78e7d6ebbd2a8fa872aaa68a1a4b866373",
+      "sha256": "7747a06c6e5f39b2e9872904b167e932a25f30783a102a753ab7dd06158a410e",
       "size": 260
     },
     "config/vss-client-config.yaml": {
-      "sha256": "3d798bbd1d2e0d60bba267827d6b0430a28cac2f7d5399e3ca99ff5c228097ff",
-      "size": 6536
+      "sha256": "6ee1b0bbd92d4d4e6ab2935b38c96eb7e07f00c02422d72a72bfc479faa54522",
+      "size": 6537
     },
     "config/vss-server-config.yaml": {
       "sha256": "664240fd7bbd9c10d8068b78e46456f4da4806cc37c0618de60c594af4780e46",

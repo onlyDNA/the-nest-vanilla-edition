@@ -1335,6 +1335,51 @@ public final class TxAdminServer {
 
         String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries) + worldMeta;
         try {
+            ServerLevel ov = srv.overworld();
+            long dayTime = srv.clockManager().getInstance(
+                    ov.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_CLOCK)
+                            .getOrThrow(net.minecraft.world.clock.WorldClocks.OVERWORLD)
+            ).totalTicks() % 24000L;
+            int weather = ov.isThundering() ? 2 : (ov.isRaining() ? 1 : 0);
+            int diff = srv.getWorldData().getDifficulty().getId();
+            int tickRate = (int) Math.round(srv.tickRateManager().tickrate());
+            int tickFrozen = srv.tickRateManager().isFrozen() ? 1 : 0;
+            long border = Math.round(ov.getWorldBorder().getSize());
+            GameRules gr = ov.getGameRules();
+            int sleepPct = gr.get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
+            int tickSpeed = gr.get(GameRules.RANDOM_TICK_SPEED);
+            int fireSpread = gr.get(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER);
+            @SuppressWarnings("unchecked")
+            GameRule<Boolean>[] boolRules = new GameRule[] {
+                    GameRules.KEEP_INVENTORY,
+                    GameRules.MOB_GRIEFING,
+                    GameRules.PVP,
+                    GameRules.LOCATOR_BAR,
+                    GameRules.SPAWN_PHANTOMS,
+                    GameRules.ADVANCE_TIME,
+                    GameRules.ADVANCE_WEATHER,
+                    GameRules.SPAWN_PATROLS,
+                    GameRules.SPAWN_WANDERING_TRADERS,
+                    GameRules.SPAWN_WARDENS,
+                    GameRules.SPAWN_MOBS,
+                    GameRules.FALL_DAMAGE,
+                    GameRules.TNT_EXPLODES,
+                    GameRules.SHOW_ADVANCEMENT_MESSAGES,
+                    GameRules.SHOW_DEATH_MESSAGES,
+                    GameRules.IMMEDIATE_RESPAWN
+            };
+            int grMask = 0;
+            for (int i = 0; i < boolRules.length; i++) {
+                if (Boolean.TRUE.equals(gr.get(boolRules[i]))) {
+                    grMask |= (1 << i);
+                }
+            }
+            worldMeta = ";W:" + dayTime + "|" + weather + "|" + diff + "|" + tickRate + "|" + tickFrozen
+                    + "|" + border + "|" + sleepPct + "|" + tickSpeed + "|" + fireSpread + "|" + grMask;
+        } catch (Throwable ignored) {}
+
+        String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries) + worldMeta;
+        try {
             PacketDistributor.sendToPlayer(admin, new OpenTxAdminPayload(god, noclip, fly, vanish, nv, speed, selfGm, csv));
         } catch (Throwable t) {
             if (openScreen) {
