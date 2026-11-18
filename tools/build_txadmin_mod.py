@@ -1209,6 +1209,8 @@ import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.gamerules.GameRule;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
@@ -1286,7 +1288,52 @@ public final class TxAdminServer {
                     return n + "|" + gm + "|" + op + "|" + frz;
                 })
                 .collect(Collectors.toList());
-        String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries);
+        String worldMeta = "";
+        try {
+            ServerLevel ov = srv.overworld();
+            long dayTime = srv.clockManager().getInstance(
+                    ov.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_CLOCK)
+                            .getOrThrow(net.minecraft.world.clock.WorldClocks.OVERWORLD)
+            ).totalTicks() % 24000L;
+            int weather = ov.isThundering() ? 2 : (ov.isRaining() ? 1 : 0);
+            int diff = srv.getWorldData().getDifficulty().getId();
+            int tickRate = (int) Math.round(srv.tickRateManager().tickrate());
+            int tickFrozen = srv.tickRateManager().isFrozen() ? 1 : 0;
+            long border = Math.round(ov.getWorldBorder().getSize());
+            GameRules gr = ov.getGameRules();
+            int sleepPct = gr.get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
+            int tickSpeed = gr.get(GameRules.RANDOM_TICK_SPEED);
+            int fireSpread = gr.get(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER);
+            @SuppressWarnings("unchecked")
+            GameRule<Boolean>[] boolRules = new GameRule[] {
+                    GameRules.KEEP_INVENTORY,
+                    GameRules.MOB_GRIEFING,
+                    GameRules.PVP,
+                    GameRules.LOCATOR_BAR,
+                    GameRules.SPAWN_PHANTOMS,
+                    GameRules.ADVANCE_TIME,
+                    GameRules.ADVANCE_WEATHER,
+                    GameRules.SPAWN_PATROLS,
+                    GameRules.SPAWN_WANDERING_TRADERS,
+                    GameRules.SPAWN_WARDENS,
+                    GameRules.SPAWN_MOBS,
+                    GameRules.FALL_DAMAGE,
+                    GameRules.TNT_EXPLODES,
+                    GameRules.SHOW_ADVANCEMENT_MESSAGES,
+                    GameRules.SHOW_DEATH_MESSAGES,
+                    GameRules.IMMEDIATE_RESPAWN
+            };
+            int grMask = 0;
+            for (int i = 0; i < boolRules.length; i++) {
+                if (Boolean.TRUE.equals(gr.get(boolRules[i]))) {
+                    grMask |= (1 << i);
+                }
+            }
+            worldMeta = ";W:" + dayTime + "|" + weather + "|" + diff + "|" + tickRate + "|" + tickFrozen
+                    + "|" + border + "|" + sleepPct + "|" + tickSpeed + "|" + fireSpread + "|" + grMask;
+        } catch (Throwable ignored) {}
+
+        String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries) + worldMeta;
         try {
             PacketDistributor.sendToPlayer(admin, new OpenTxAdminPayload(god, noclip, fly, vanish, nv, speed, selfGm, csv));
         } catch (Throwable t) {
@@ -3106,6 +3153,17 @@ public class TxAdminScreen extends Screen {
     private int speed;
     private int selfGm;
 
+    private int worldTime = 1000;
+    private int worldWeather = 0; // 0=clear, 1=rain, 2=thunder
+    private int worldDiff = 2; // 0=peaceful..3=hard
+    private int worldTickRate = 20;
+    private boolean worldFrozen = false;
+    private long worldBorder = 59999968L;
+    private int ruleSleepPct = 100;
+    private int ruleTickSpeed = 3;
+    private int ruleFireSpread = 128;
+    private final boolean[] ruleBools = new boolean[16];
+
     private final List<String> playerNames = new ArrayList<>();
     private final Map<String, PlayerState> playerStates = new HashMap<>();
     private List<LocalPreset> localPresets = new ArrayList<>();
@@ -3140,7 +3198,7 @@ public class TxAdminScreen extends Screen {
         rebuildRows();
     }
 
-    public void applySync(OpenTxAdminPayload p, String csv) {
+    public void applySync(OpenTxAdminPayload p, String rawCsv) {
         this.god = p.god();
         this.noclip = p.noclip();
         this.fly = p.fly();
@@ -3149,10 +3207,33 @@ public class TxAdminScreen extends Screen {
         this.speed = p.speed();
         this.selfGm = p.selfGm();
 
+        String csv = rawCsv != null ? rawCsv : "";
+        int wIdx = csv.indexOf(";W:");
+        if (wIdx >= 0) {
+            String wStr = csv.substring(wIdx + 3);
+            csv = csv.substring(0, wIdx);
+            String[] wp = wStr.split("\\|");
+            if (wp.length >= 10) {
+                this.worldTime = parseIntSafe(wp[0], this.worldTime);
+                this.worldWeather = parseIntSafe(wp[1], this.worldWeather);
+                this.worldDiff = parseIntSafe(wp[2], this.worldDiff);
+                this.worldTickRate = parseIntSafe(wp[3], this.worldTickRate);
+                this.worldFrozen = "1".equals(wp[4]);
+                try { this.worldBorder = Long.parseLong(wp[5].trim()); } catch (Exception ignored) {}
+                this.ruleSleepPct = parseIntSafe(wp[6], this.ruleSleepPct);
+                this.ruleTickSpeed = parseIntSafe(wp[7], this.ruleTickSpeed);
+                this.ruleFireSpread = parseIntSafe(wp[8], this.ruleFireSpread);
+                int mask = parseIntSafe(wp[9], 0);
+                for (int i = 0; i < this.ruleBools.length; i++) {
+                    this.ruleBools[i] = ((mask >> i) & 1) != 0;
+                }
+            }
+        }
+
         String prevTarget = getSelectedPlayer();
         this.playerNames.clear();
         this.playerStates.clear();
-        if (csv != null && !csv.isBlank()) {
+        if (!csv.isBlank()) {
             for (String s : csv.split(",")) {
                 if (s.isBlank()) continue;
                 String[] parts = s.trim().split("\\|");
@@ -3557,39 +3638,60 @@ public class TxAdminScreen extends Screen {
                 )));
             }
             case "world" -> {
-                currentRows.add(new RowSpec("Time of Day (/time set)", "Set server world time immediately", List.of(
-                        new BtnSpec("Day", 1, () -> sendCmd("time set day", "Time: Day")),
-                        new BtnSpec("Noon", 0, () -> sendCmd("time set noon", "Time: Noon")),
-                        new BtnSpec("Sunset", 0, () -> sendCmd("time set 12000", "Time: Sunset")),
-                        new BtnSpec("Night", 0, () -> sendCmd("time set night", "Time: Night")),
+                int tb = (worldTime >= 5000 && worldTime < 11000) ? 1
+                        : (worldTime >= 11000 && worldTime < 13000) ? 2
+                        : (worldTime >= 13000) ? 3 : 0;
+                String tbName = switch (tb) {
+                    case 1 -> "Noon";
+                    case 2 -> "Sunset";
+                    case 3 -> "Night";
+                    default -> "Day";
+                };
+                currentRows.add(new RowSpec("Time of Day", "Current: " + tbName + " (" + worldTime + " ticks)", List.of(
+                        new BtnSpec("Day", tb == 0 ? 1 : 0, () -> { worldTime = 1000; rebuildRows(); sendCmd("time set day", "Time: Day"); }),
+                        new BtnSpec("Noon", tb == 1 ? 1 : 0, () -> { worldTime = 6000; rebuildRows(); sendCmd("time set noon", "Time: Noon"); }),
+                        new BtnSpec("Sunset", tb == 2 ? 1 : 0, () -> { worldTime = 12000; rebuildRows(); sendCmd("time set 12000", "Time: Sunset"); }),
+                        new BtnSpec("Night", tb == 3 ? 1 : 0, () -> { worldTime = 13000; rebuildRows(); sendCmd("time set night", "Time: Night"); }),
                         new BtnSpec("+1d", 0, () -> sendCmd("time add 24000", "Added 1 Day"))
                 )));
-                currentRows.add(new RowSpec("Weather (/weather)", "Control sky and storms", List.of(
-                        new BtnSpec("Clear", 2, () -> sendCmd("weather clear", "Weather: Clear")),
-                        new BtnSpec("Clear 1h", 2, () -> sendCmd("weather clear 3600s", "Weather: Clear 1h")),
-                        new BtnSpec("Rain", 0, () -> sendCmd("weather rain", "Weather: Rain")),
-                        new BtnSpec("Thunder", 3, () -> sendCmd("weather thunder", "Weather: Thunder"))
+                String wName = worldWeather == 2 ? "Thunder" : (worldWeather == 1 ? "Rain" : "Clear");
+                currentRows.add(new RowSpec("Weather", "Sky: " + wName, List.of(
+                        new BtnSpec("Clear", worldWeather == 0 ? 2 : 0, () -> { worldWeather = 0; rebuildRows(); sendCmd("weather clear", "Weather: Clear"); }),
+                        new BtnSpec("Clear 1h", 0, () -> { worldWeather = 0; rebuildRows(); sendCmd("weather clear 3600s", "Weather: Clear 1h"); }),
+                        new BtnSpec("Rain", worldWeather == 1 ? 2 : 0, () -> { worldWeather = 1; rebuildRows(); sendCmd("weather rain", "Weather: Rain"); }),
+                        new BtnSpec("Thunder", worldWeather == 2 ? 2 : 0, () -> { worldWeather = 2; rebuildRows(); sendCmd("weather thunder", "Weather: Thunder"); })
                 )));
-                currentRows.add(new RowSpec("Server Difficulty (/difficulty)", "Change survival combat difficulty", List.of(
-                        new BtnSpec("Peaceful", 2, () -> sendCmd("difficulty peaceful", "Difficulty: Peaceful")),
-                        new BtnSpec("Easy", 0, () -> sendCmd("difficulty easy", "Difficulty: Easy")),
-                        new BtnSpec("Normal", 1, () -> sendCmd("difficulty normal", "Difficulty: Normal")),
-                        new BtnSpec("Hard", 3, () -> sendCmd("difficulty hard", "Difficulty: Hard"))
+                String dName = switch (worldDiff) {
+                    case 0 -> "Peaceful";
+                    case 1 -> "Easy";
+                    case 3 -> "Hard";
+                    default -> "Normal";
+                };
+                currentRows.add(new RowSpec("Difficulty", "Mode: " + dName, List.of(
+                        new BtnSpec("Peaceful", worldDiff == 0 ? 2 : 0, () -> { worldDiff = 0; rebuildRows(); sendCmd("difficulty peaceful", "Difficulty: Peaceful"); }),
+                        new BtnSpec("Easy", worldDiff == 1 ? 2 : 0, () -> { worldDiff = 1; rebuildRows(); sendCmd("difficulty easy", "Difficulty: Easy"); }),
+                        new BtnSpec("Normal", worldDiff == 2 ? 2 : 0, () -> { worldDiff = 2; rebuildRows(); sendCmd("difficulty normal", "Difficulty: Normal"); }),
+                        new BtnSpec("Hard", worldDiff == 3 ? 2 : 0, () -> { worldDiff = 3; rebuildRows(); sendCmd("difficulty hard", "Difficulty: Hard"); })
                 )));
-                currentRows.add(new RowSpec("Server Tick Rate (/tick)", "Freeze simulation or adjust TPS", List.of(
-                        new BtnSpec("20 TPS", 2, () -> sendCmd("tick rate 20", "Tick Rate: 20 TPS")),
-                        new BtnSpec("Freeze", 3, () -> sendCmd("tick freeze", "World Frozen")),
-                        new BtnSpec("Unfreeze", 2, () -> sendCmd("tick unfreeze", "World Unfrozen")),
-                        new BtnSpec("10 TPS", 0, () -> sendCmd("tick rate 10", "Tick Rate: 10 TPS"))
+                currentRows.add(new RowSpec("Tick Rate", worldFrozen ? "Status: FROZEN" : ("Rate: " + worldTickRate + " TPS"), List.of(
+                        new BtnSpec("20 TPS", !worldFrozen && worldTickRate == 20 ? 2 : 0, () -> { worldFrozen = false; worldTickRate = 20; rebuildRows(); sendCmd("tick unfreeze", ""); sendCmd("tick rate 20", "Tick Rate: 20 TPS"); }),
+                        new BtnSpec("10 TPS", !worldFrozen && worldTickRate == 10 ? 2 : 0, () -> { worldFrozen = false; worldTickRate = 10; rebuildRows(); sendCmd("tick unfreeze", ""); sendCmd("tick rate 10", "Tick Rate: 10 TPS"); }),
+                        new BtnSpec(worldFrozen ? "FROZEN" : "Freeze", worldFrozen ? 3 : 0, () -> {
+                            boolean next = !worldFrozen;
+                            worldFrozen = next;
+                            rebuildRows();
+                            sendCmd(next ? "tick freeze" : "tick unfreeze", next ? "World Frozen" : "World Unfrozen");
+                        })
                 )));
-                currentRows.add(new RowSpec("World Border (/worldborder)", "Set diameter or center at (0, 0)", List.of(
-                        new BtnSpec("2.5k", 0, () -> sendCmd("worldborder set 2500", "Border: 2500m")),
-                        new BtnSpec("5k", 0, () -> sendCmd("worldborder set 5000", "Border: 5000m")),
-                        new BtnSpec("10k", 1, () -> sendCmd("worldborder set 10000", "Border: 10000m")),
+                String wbTxt = worldBorder >= 50000000L ? "Vanilla (60M)" : (worldBorder + "m");
+                currentRows.add(new RowSpec("World Border", "Diameter: " + wbTxt, List.of(
+                        new BtnSpec("2.5k", Math.abs(worldBorder - 2500L) <= 2 ? 2 : 0, () -> { worldBorder = 2500L; rebuildRows(); sendCmd("worldborder set 2500", "Border: 2500m"); }),
+                        new BtnSpec("5k", Math.abs(worldBorder - 5000L) <= 2 ? 2 : 0, () -> { worldBorder = 5000L; rebuildRows(); sendCmd("worldborder set 5000", "Border: 5000m"); }),
+                        new BtnSpec("10k", Math.abs(worldBorder - 10000L) <= 2 ? 2 : 0, () -> { worldBorder = 10000L; rebuildRows(); sendCmd("worldborder set 10000", "Border: 10000m"); }),
                         new BtnSpec("Center", 0, () -> sendCmd("worldborder center 0 0", "Border centered at 0,0")),
-                        new BtnSpec("60M", 0, () -> sendCmd("worldborder set 59999968", "Border reset"))
+                        new BtnSpec("60M", worldBorder >= 50000000L ? 2 : 0, () -> { worldBorder = 59999968L; rebuildRows(); sendCmd("worldborder set 59999968", "Border reset"); })
                 )));
-                currentRows.add(new RowSpec("Server Announcement (Top Input)", "Broadcast banner or chat alert", List.of(
+                currentRows.add(new RowSpec("Announcement", "Broadcast text from bar above", List.of(
                         new BtnSpec("Title", 1, () -> {
                             String msg = getInputOrDefault("Welcome to The Nest!").replace("\"", "'");
                             sendCmd("title @a title {\"text\":\"" + msg + "\",\"color\":\"gold\",\"bold\":true}", "Sent Title Banner");
@@ -3598,112 +3700,119 @@ public class TxAdminScreen extends Screen {
                             String msg = getInputOrDefault("Welcome to The Nest!").replace("\"", "'");
                             sendCmd("title @a actionbar {\"text\":\"" + msg + "\",\"color\":\"yellow\"}", "Sent Actionbar");
                         }),
-                        new BtnSpec("Chat", 2, () -> {
+                        new BtnSpec("Chat", 0, () -> {
                             String msg = getInputOrDefault("Server Announcement").replace("\"", "'");
                             sendCmd("tellraw @a [{\"text\":\"[The Nest] \",\"color\":\"gold\",\"bold\":true},{\"text\":\"" + msg + "\",\"color\":\"yellow\"}]", "Sent Chat Broadcast");
                         })
                 )));
             }
             case "gamerules" -> {
-                currentRows.add(new RowSpec("Players Sleeping %", "playersSleepingPercentage", List.of(
-                        new BtnSpec("1% (1P)", 1, () -> sendCmd("gamerule playersSleepingPercentage 1", "1-Player Sleep ON")),
-                        new BtnSpec("50%", 0, () -> sendCmd("gamerule playersSleepingPercentage 50", "Sleep: 50%")),
-                        new BtnSpec("100%", 0, () -> sendCmd("gamerule playersSleepingPercentage 100", "Sleep: 100%"))
+                currentRows.add(new RowSpec("Players Sleeping %", "Active: " + ruleSleepPct + "%", List.of(
+                        new BtnSpec("1% (1P)", ruleSleepPct == 1 ? 2 : 0, () -> { ruleSleepPct = 1; rebuildRows(); sendCmd("gamerule players_sleeping_percentage 1", "1-Player Sleep ON"); }),
+                        new BtnSpec("50%", ruleSleepPct == 50 ? 2 : 0, () -> { ruleSleepPct = 50; rebuildRows(); sendCmd("gamerule players_sleeping_percentage 50", "Sleep: 50%"); }),
+                        new BtnSpec("100%", ruleSleepPct == 100 ? 2 : 0, () -> { ruleSleepPct = 100; rebuildRows(); sendCmd("gamerule players_sleeping_percentage 100", "Sleep: 100%"); })
                 )));
-                currentRows.add(new RowSpec("Random Tick Speed", "randomTickSpeed (Vanilla = 3)", List.of(
-                        new BtnSpec("0 (Off)", 0, () -> sendCmd("gamerule randomTickSpeed 0", "Tick Speed: 0")),
-                        new BtnSpec("3 (Def)", 2, () -> sendCmd("gamerule randomTickSpeed 3", "Tick Speed: 3")),
-                        new BtnSpec("6 (2x)", 1, () -> sendCmd("gamerule randomTickSpeed 6", "Tick Speed: 6")),
-                        new BtnSpec("12 (4x)", 0, () -> sendCmd("gamerule randomTickSpeed 12", "Tick Speed: 12"))
+                currentRows.add(new RowSpec("Random Tick Speed", "Active: " + ruleTickSpeed + " (Vanilla 3)", List.of(
+                        new BtnSpec("0", ruleTickSpeed == 0 ? 2 : 0, () -> { ruleTickSpeed = 0; rebuildRows(); sendCmd("gamerule random_tick_speed 0", "Tick Speed: 0"); }),
+                        new BtnSpec("3", ruleTickSpeed == 3 ? 2 : 0, () -> { ruleTickSpeed = 3; rebuildRows(); sendCmd("gamerule random_tick_speed 3", "Tick Speed: 3"); }),
+                        new BtnSpec("6", ruleTickSpeed == 6 ? 2 : 0, () -> { ruleTickSpeed = 6; rebuildRows(); sendCmd("gamerule random_tick_speed 6", "Tick Speed: 6"); }),
+                        new BtnSpec("12", ruleTickSpeed == 12 ? 2 : 0, () -> { ruleTickSpeed = 12; rebuildRows(); sendCmd("gamerule random_tick_speed 12", "Tick Speed: 12"); })
+                )));
+                boolean fireOn = ruleFireSpread > 0;
+                currentRows.add(new RowSpec("Fire Spread Radius", "fire_spread_radius (" + (fireOn ? ruleFireSpread + "m" : "Off") + ")", List.of(
+                        new BtnSpec("ON", fireOn ? 2 : 0, () -> { ruleFireSpread = 128; rebuildRows(); sendCmd("gamerule fire_spread_radius_around_player 128", "Fire Spread: ON (128)"); }),
+                        new BtnSpec("OFF", !fireOn ? 3 : 0, () -> { ruleFireSpread = 0; rebuildRows(); sendCmd("gamerule fire_spread_radius_around_player 0", "Fire Spread: OFF"); })
                 )));
                 String[][] rules = {
-                        {"Keep Inventory on Death", "keepInventory"},
-                        {"Mob Griefing (Creepers/Endermen)", "mobGriefing"},
-                        {"PvP Combat Damage", "pvp"},
-                        {"26.3 Player Locator Bar", "locatorBar"},
-                        {"Phantom Night Spawning", "doInsomnia"},
-                        {"Fire Spread & Burnout", "doFireTick"},
-                        {"Daylight Cycle", "doDaylightCycle"},
-                        {"Weather Cycle", "doWeatherCycle"},
-                        {"Pillager Patrol Spawning", "doPatrolSpawning"},
-                        {"Wandering Trader Spawning", "doTraderSpawning"},
-                        {"Warden Spawning", "doWardenSpawning"},
-                        {"Natural Mob Spawning", "doMobSpawning"},
-                        {"Fall Damage", "fallDamage"},
-                        {"TNT Detonation", "tntExplodes"},
-                        {"Announce Advancements", "announceAdvancements"},
-                        {"Show Death Messages", "showDeathMessages"}
+                        {"Keep Inventory", "keep_inventory"},
+                        {"Mob Griefing", "mob_griefing"},
+                        {"PvP Combat", "pvp"},
+                        {"Player Locator Bar", "locator_bar"},
+                        {"Phantom Spawning", "spawn_phantoms"},
+                        {"Daylight Cycle", "advance_time"},
+                        {"Weather Cycle", "advance_weather"},
+                        {"Pillager Patrols", "spawn_patrols"},
+                        {"Wandering Traders", "spawn_wandering_traders"},
+                        {"Warden Spawning", "spawn_wardens"},
+                        {"Mob Spawning", "spawn_mobs"},
+                        {"Fall Damage", "fall_damage"},
+                        {"TNT Explosions", "tnt_explodes"},
+                        {"Advancement Alerts", "show_advancement_messages"},
+                        {"Death Messages", "show_death_messages"},
+                        {"Immediate Respawn", "immediate_respawn"}
                 };
-                for (String[] r : rules) {
-                    String title = r[0];
-                    String id = r[1];
+                for (int i = 0; i < rules.length; i++) {
+                    final int idx = i;
+                    final String title = rules[i][0];
+                    final String id = rules[i][1];
+                    final boolean active = ruleBools[i];
                     currentRows.add(new RowSpec(title, id, List.of(
-                            new BtnSpec("ON", 2, () -> sendCmd("gamerule " + id + " true", id + " = true")),
-                            new BtnSpec("OFF", 3, () -> sendCmd("gamerule " + id + " false", id + " = false"))
+                            new BtnSpec("ON", active ? 2 : 0, () -> { ruleBools[idx] = true; rebuildRows(); sendCmd("gamerule " + id + " true", id + " = true"); }),
+                            new BtnSpec("OFF", !active ? 3 : 0, () -> { ruleBools[idx] = false; rebuildRows(); sendCmd("gamerule " + id + " false", id + " = false"); })
                     )));
                 }
             }
             case "mods" -> {
-                currentRows.add(new RowSpec("Voxy Server Side (/vsslod)", "Distant LOD service & backfill", List.of(
+                currentRows.add(new RowSpec("Voxy Server Side", "Distant LOD service & backfill", List.of(
                         new BtnSpec("Status", 0, () -> sendCmd("vsslod status", "Queried VSS Status")),
-                        new BtnSpec("Reload", 1, () -> sendCmd("vsslod reload", "Reloaded Voxy Server Side")),
+                        new BtnSpec("Reload", 0, () -> sendCmd("vsslod reload", "Reloaded Voxy Server Side")),
                         new BtnSpec("Backfill", 2, () -> sendCmd("vsslod backfill start", "Started VSS Backfill")),
-                        new BtnSpec("Stop", 3, () -> sendCmd("vsslod backfill stop", "Stopped VSS Backfill"))
+                        new BtnSpec("Stop", 0, () -> sendCmd("vsslod backfill stop", "Stopped VSS Backfill"))
                 )));
-                currentRows.add(new RowSpec("ServerCore (/servercore)", "Dynamic distance & mobcaps", List.of(
+                currentRows.add(new RowSpec("ServerCore", "Dynamic view distance & mobcaps", List.of(
                         new BtnSpec("Status", 0, () -> sendCmd("servercore status", "Queried ServerCore")),
-                        new BtnSpec("Mobcaps", 1, () -> sendCmd("mobcaps", "Queried Mobcaps")),
-                        new BtnSpec("Reload", 2, () -> sendCmd("servercore reload", "Reloaded ServerCore"))
+                        new BtnSpec("Mobcaps", 0, () -> sendCmd("mobcaps", "Queried Mobcaps")),
+                        new BtnSpec("Reload", 1, () -> sendCmd("servercore reload", "Reloaded ServerCore"))
                 )));
-                currentRows.add(new RowSpec("Chunky Pre-Generator (/chunky)", "Pre-generate 5000m Overworld", List.of(
+                currentRows.add(new RowSpec("Chunky Pre-Gen", "Pre-generate 5000m Overworld", List.of(
                         new BtnSpec("Start 5k", 2, () -> {
                             sendCmd("chunky world minecraft:overworld", "");
                             sendCmd("chunky center 0 0", "");
                             sendCmd("chunky radius 5000", "");
                             sendCmd("chunky start", "Started Chunky 5000m Pre-Gen");
                         }),
-                        new BtnSpec("Pause", 1, () -> sendCmd("chunky pause", "Paused Chunky")),
-                        new BtnSpec("Cont", 2, () -> sendCmd("chunky continue", "Resumed Chunky")),
-                        new BtnSpec("Stop", 3, () -> sendCmd("chunky cancel", "Cancelled Chunky"))
+                        new BtnSpec("Pause", 0, () -> sendCmd("chunky pause", "Paused Chunky")),
+                        new BtnSpec("Cont", 0, () -> sendCmd("chunky continue", "Resumed Chunky")),
+                        new BtnSpec("Stop", 0, () -> sendCmd("chunky cancel", "Cancelled Chunky"))
                 )));
-                currentRows.add(new RowSpec("Spark Profiler (/spark)", "Inspect TPS, memory & CPU", List.of(
+                currentRows.add(new RowSpec("Spark Profiler", "Inspect TPS, memory & CPU", List.of(
                         new BtnSpec("TPS", 1, () -> sendCmd("spark tps", "Queried Spark TPS")),
-                        new BtnSpec("Health", 2, () -> sendCmd("spark health", "Queried Spark Health")),
+                        new BtnSpec("Health", 0, () -> sendCmd("spark health", "Queried Spark Health")),
                         new BtnSpec("Mem", 0, () -> sendCmd("spark memory", "Queried Spark Memory")),
                         new BtnSpec("Start", 2, () -> sendCmd("spark profiler start", "Started Spark Profiler")),
-                        new BtnSpec("Stop", 1, () -> sendCmd("spark profiler stop", "Stopped Spark Profiler"))
+                        new BtnSpec("Stop", 0, () -> sendCmd("spark profiler stop", "Stopped Spark Profiler"))
                 )));
-                currentRows.add(new RowSpec("Simple Backups (/simplebackups)", "Create an immediate world backup", List.of(
+                currentRows.add(new RowSpec("Simple Backups", "Immediate backup & flush", List.of(
                         new BtnSpec("Start Backup", 2, () -> sendCmd("simplebackups backup start", "Started World Backup")),
-                        new BtnSpec("Save-All", 1, () -> sendCmd("save-all flush", "Flushed World Save"))
+                        new BtnSpec("Save-All", 0, () -> sendCmd("save-all flush", "Flushed World Save"))
                 )));
             }
             case "items" -> {
-                currentRows.add(new RowSpec("Casino Table Games", "Gives 1x table to " + tgt, List.of(
-                        new BtnSpec("Slots", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:slot_machine 1", "Gave Slot Machine")),
-                        new BtnSpec("Roulette", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:roulette_table 1", "Gave Roulette")),
-                        new BtnSpec("Blackjack", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:blackjack_table 1", "Gave Blackjack")),
-                        new BtnSpec("Poker", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:poker_table 1", "Gave Poker Table"))
+                currentRows.add(new RowSpec("Casino Tables", "Give 1x table to " + tgt, List.of(
+                        new BtnSpec("Slots", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:slot_machine 1", "Gave Slot Machine")),
+                        new BtnSpec("Roulette", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:roulette_table 1", "Gave Roulette")),
+                        new BtnSpec("Blackjack", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:blackjack_table 1", "Gave Blackjack")),
+                        new BtnSpec("Poker", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:poker_table 1", "Gave Poker Table"))
                 )));
-                currentRows.add(new RowSpec("Casino Wheels & Arcade", "Fortune wheel, Plinko & Duck Derby", List.of(
-                        new BtnSpec("Wheel", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:fortune_wheel 1", "Gave Fortune Wheel")),
-                        new BtnSpec("Plinko", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:plinko 1", "Gave Plinko")),
-                        new BtnSpec("Duck Derby", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:duck_derby 1", "Gave Duck Derby"))
+                currentRows.add(new RowSpec("Casino Arcade", "Fortune wheel, Plinko & Duck Derby", List.of(
+                        new BtnSpec("Wheel", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:fortune_wheel 1", "Gave Fortune Wheel")),
+                        new BtnSpec("Plinko", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:plinko 1", "Gave Plinko")),
+                        new BtnSpec("Duck Derby", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:duck_derby 1", "Gave Duck Derby"))
                 )));
-                currentRows.add(new RowSpec("Croupier Staff & Chips", "Hire croupiers or spawn chips", List.of(
-                        new BtnSpec("Croupier", 2, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:croupier_hiring_card 1", "Gave Croupier Card")),
-                        new BtnSpec("Chip Case", 2, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:chip_case 1", "Gave Chip Case")),
+                currentRows.add(new RowSpec("Croupier & Chips", "Hire croupiers or spawn chips", List.of(
+                        new BtnSpec("Croupier", 1, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:croupier_hiring_card 1", "Gave Croupier Card")),
+                        new BtnSpec("Chip Case", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:chip_case 1", "Gave Chip Case")),
                         new BtnSpec("Chips", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:casino_chip_pile 1", "Gave Chip Pile")),
                         new BtnSpec("Register", 0, () -> sendCmd("give " + getSelectedPlayer() + " casinodeco:cash_register 1", "Gave Cash Register"))
                 )));
-                currentRows.add(new RowSpec("Live FM Radio & Boombox", "Custom 3D FM Radio & Boombox", List.of(
+                currentRows.add(new RowSpec("FM Radio & Boombox", "Custom 3D audio devices", List.of(
                         new BtnSpec("FM Radio", 1, () -> sendCmd("give " + getSelectedPlayer() + " music_disc_maker:fm_radio 1", "Gave FM Radio")),
                         new BtnSpec("Boombox", 0, () -> sendCmd("give " + getSelectedPlayer() + " music_disc_maker:boombox 1", "Gave Boombox"))
                 )));
-                currentRows.add(new RowSpec("Admin Builder & Security Wands", "WorldEdit, Easy NPC & SecurityCraft", List.of(
+                currentRows.add(new RowSpec("Builder & Security", "WorldEdit, Easy NPC & SecurityCraft", List.of(
                         new BtnSpec("WE Axe", 0, () -> sendCmd("give " + getSelectedPlayer() + " minecraft:wooden_axe 1", "Gave WorldEdit Wand")),
-                        new BtnSpec("NPC Wand", 2, () -> sendCmd("give " + getSelectedPlayer() + " easy_npc:easy_npc_wand 1", "Gave Easy NPC Wand")),
-                        new BtnSpec("SC Tool", 1, () -> sendCmd("give " + getSelectedPlayer() + " securitycraft:universal_block_modifier 1", "Gave SecurityCraft Tool"))
+                        new BtnSpec("NPC Wand", 0, () -> sendCmd("give " + getSelectedPlayer() + " easy_npc:easy_npc_wand 1", "Gave Easy NPC Wand")),
+                        new BtnSpec("SC Tool", 0, () -> sendCmd("give " + getSelectedPlayer() + " securitycraft:universal_block_modifier 1", "Gave SecurityCraft Tool"))
                 )));
             }
         }
