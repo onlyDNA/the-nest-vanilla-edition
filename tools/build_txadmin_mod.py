@@ -2549,8 +2549,11 @@ public final class TxAdminClient {
     }
 
     private static void fillCircle(GuiGraphicsExtractor g, int cx, int cy, int r, int argb) {
+        double rSq = (double) r * r - (r >= 4 ? 0.8 : 0.15);
         for (int dy = -r; dy <= r; dy++) {
-            int span = (int) Math.floor(Math.sqrt((double) r * r - (double) dy * dy + 0.35));
+            double rem = rSq - (double) dy * dy;
+            if (rem < 0.0) continue;
+            int span = (int) Math.floor(Math.sqrt(rem));
             g.fill(cx - span, cy + dy, cx + span + 1, cy + dy + 1, argb);
         }
     }
@@ -2562,9 +2565,8 @@ public final class TxAdminClient {
         int[] bounds = findJoinButtonBounds(screen);
         int jx = bounds[0], jy = bounds[1], jw = bounds[2], jh = bounds[3];
 
-        // Position a clean small circle right next to the "Join The Nest" label inside the button
-        int labelW = mc.font.width("Join The Nest");
-        int cx = Math.min(jx + jw - 11, jx + jw / 2 + labelW / 2 + 10);
+        // Position a clean small circle at the far right side inside the "Join The Nest" button
+        int cx = jx + jw - 13;
         int cy = jy + jh / 2;
 
         int st = serverStatus;
