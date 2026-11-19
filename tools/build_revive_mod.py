@@ -578,6 +578,7 @@ public final class ReviveServerManager {
             if (dragger != null) {
                 setNoStepUp(dragger, false);
                 setCarrySlow(dragger, false);
+                dragger.setForcedPose(null);
                 dragger.removeEffect(MobEffects.SLOWNESS);
             }
         }
@@ -633,6 +634,7 @@ public final class ReviveServerManager {
                 held.holdMode = MODE_NONE;
                 setNoStepUp(sp, false);
                 setCarrySlow(sp, false);
+                sp.setForcedPose(null);
                 sp.removeEffect(MobEffects.SLOWNESS);
                 if (victim != null) {
                     setCarryTeam(srv, victim, held, false);
@@ -661,10 +663,11 @@ public final class ReviveServerManager {
                     targetEntry.holdMode = MODE_CARRY;
                     targetEntry.reviveTicks = 0;
                     targetEntry.activeReviverName = "";
-                    setNoStepUp(sp, false); // Carrier can climb blocks and look around!
-                    setCarrySlow(sp, true);
+                    setNoStepUp(sp, false); // Carrier can climb blocks and look around while crouched
+                    setCarrySlow(sp, false);
+                    sp.removeEffect(MobEffects.SLOWNESS);
                     sp.setSprinting(false);
-                    sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, true, false, false)); // Slowness III
+                    sp.setForcedPose(Pose.CROUCHING);
                     ServerPlayer victim = srv.getPlayerList().getPlayer(targetEntry.playerId);
                     if (victim != null) {
                         setCarryTeam(srv, victim, targetEntry, true);
@@ -673,7 +676,7 @@ public final class ReviveServerManager {
                         double ll = Math.hypot(lx, lz);
                         if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
                         double sx = sp.getX() - lx * 0.42;
-                        double sy = sp.getY() + 0.68;
+                        double sy = sp.getY() + 0.50;
                         double sz = sp.getZ() - lz * 0.42;
                         targetEntry.dragX = sx;
                         targetEntry.dragY = sy;
@@ -721,6 +724,7 @@ public final class ReviveServerManager {
 
             setNoStepUp(sp, false);
             setCarrySlow(sp, false);
+            sp.setForcedPose(null);
             sp.removeEffect(MobEffects.SLOWNESS);
             if (victim != null) {
                 setCarryTeam(srv, victim, held, false);
@@ -741,6 +745,7 @@ public final class ReviveServerManager {
                 held.holdMode = MODE_NONE;
                 setNoStepUp(sp, false);
                 setCarrySlow(sp, false);
+                sp.setForcedPose(null);
                 sp.removeEffect(MobEffects.SLOWNESS);
                 ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
                 if (victim != null) {
@@ -769,8 +774,9 @@ public final class ReviveServerManager {
                     }
                     setNoStepUp(sp, true);
                     setCarrySlow(sp, false);
-                    sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 1, true, false, false)); // Heavy drag slowness
-                    sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.85F, 1.05F);
+                    sp.removeEffect(MobEffects.SLOWNESS);
+                    sp.setSprinting(false);
+                    sp.setForcedPose(Pose.CROUCHING);
                     changed = true;
                 }
             }
@@ -842,6 +848,7 @@ public final class ReviveServerManager {
                 if (dragger != null) {
                     setNoStepUp(dragger, false);
                     setCarrySlow(dragger, false);
+                    dragger.setForcedPose(null);
                     dragger.removeEffect(MobEffects.SLOWNESS);
                 }
             }
@@ -953,6 +960,7 @@ public final class ReviveServerManager {
                     if (dragger != null) {
                         setNoStepUp(dragger, false);
                         setCarrySlow(dragger, false);
+                        dragger.setForcedPose(null);
                         dragger.removeEffect(MobEffects.SLOWNESS);
                     }
                     setCarryTeam(srv, victim, entry, false);
@@ -963,18 +971,19 @@ public final class ReviveServerManager {
                     victim.setNoGravity(false);
                     dirty = true;
                 } else if (entry.holdMode == MODE_CARRY) {
-                    // Piggyback carry: scoreboard CollisionRule.NEVER stops 100% pushing, height fits 2x1 doorways cleanly
+                    // Crouched piggyback carry: zero Slowness potion, carrier crouches cleanly with CollisionRule.NEVER
                     setCarryTeam(srv, victim, entry, true);
                     setNoStepUp(dragger, false);
-                    setCarrySlow(dragger, true);
+                    setCarrySlow(dragger, false);
+                    dragger.removeEffect(MobEffects.SLOWNESS);
                     dragger.setSprinting(false);
-                    dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 2, true, false, false));
+                    dragger.setForcedPose(Pose.CROUCHING);
                     Vec3 look = dragger.getLookAngle();
                     double lx = look.x, lz = look.z;
                     double ll = Math.hypot(lx, lz);
                     if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
                     double sx = dragger.getX() - lx * 0.42;
-                    double sy = dragger.getY() + 0.68;
+                    double sy = dragger.getY() + 0.50;
                     double sz = dragger.getZ() - lz * 0.42;
                     entry.dragX = sx;
                     entry.dragY = sy;
@@ -986,11 +995,12 @@ public final class ReviveServerManager {
                     victim.connection.resetPosition();
                     dirty = true;
                 } else {
-                    // Ground drag: neither dragger nor victim can climb blocks; heavy drag slowness
+                    // Crouched ground drag: neither dragger nor victim can climb blocks
                     setNoStepUp(dragger, true);
                     setCarrySlow(dragger, false);
+                    dragger.removeEffect(MobEffects.SLOWNESS);
                     dragger.setSprinting(false);
-                    dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 1, true, false, false));
+                    dragger.setForcedPose(Pose.CROUCHING);
                     victim.noPhysics = false;
                     victim.setNoGravity(false);
                     double dx = victim.getX() - dragger.getX();
@@ -1255,6 +1265,7 @@ public final class ReviveClient {
     private static volatile List<DownedView> DOWNED_LIST = List.of();
     private static volatile boolean wasSelfDowned = false;
     private static volatile boolean wasSelfCarried = false;
+    private static volatile boolean wasHoldingTarget = false;
     private static volatile boolean lastGiveUpHeld = false;
     private static volatile int localGiveUpTicks = 0;
     private static volatile int lastThrowSeq = -1;
@@ -1270,6 +1281,7 @@ public final class ReviveClient {
         SyncDownedPayload.setClientHandler(ReviveClient::onSync);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderFramePre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onComputeCameraAngles);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onComputeFov);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPost);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTickPre);
@@ -1435,22 +1447,35 @@ public final class ReviveClient {
         } catch (Throwable ignored) {}
     }
 
+    private static Player findActiveCarrier(LocalPlayer me) {
+        Minecraft mc = Minecraft.getInstance();
+        if (me == null || mc.level == null) return null;
+        DownedView self = findSelf(me);
+        if (self == null || self.holdMode() != MODE_CARRY || self.draggerUuid().isEmpty()) return null;
+        for (Player p : mc.level.players()) {
+            if (p.getUUID().toString().equals(self.draggerUuid())) {
+                return p;
+            }
+        }
+        return null;
+    }
+
     private static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer me = mc.player;
-        if (me == null || mc.level == null) return;
+        if (me == null || event.getCamera().isDetached()) return;
+        if (findActiveCarrier(me) != null) {
+            event.setRoll(-8.0F);
+        }
+    }
+
+    private static void onComputeFov(ViewportEvent.ComputeFov event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer me = mc.player;
+        if (me == null) return;
         Camera cam = event.getCamera();
         if (cam.isDetached()) return;
-        DownedView self = findSelf(me);
-        if (self == null || self.holdMode() != MODE_CARRY || self.draggerUuid().isEmpty()) return;
-
-        Player dragger = null;
-        for (Player p : mc.level.players()) {
-            if (p.getUUID().toString().equals(self.draggerUuid())) {
-                dragger = p;
-                break;
-            }
-        }
+        Player dragger = findActiveCarrier(me);
         if (dragger == null) return;
 
         float pt = event.getPartialTick();
@@ -1461,12 +1486,11 @@ public final class ReviveClient {
         double rightX = -Math.cos(rad);
         double rightZ = -Math.sin(rad);
 
-        // Rest victim head right behind the carrier's head & right shoulder
-        double px = draggerPos.x + backX * 0.38 + rightX * 0.28;
-        double py = draggerPos.y + 1.50;
-        double pz = draggerPos.z + backZ * 0.38 + rightZ * 0.28;
+        // Runs after Camera.alignWithEntity: rests victim POV behind carrier's crouched head & right shoulder
+        double px = draggerPos.x + backX * 0.44 + rightX * 0.36;
+        double py = draggerPos.y + 1.28;
+        double pz = draggerPos.z + backZ * 0.44 + rightZ * 0.36;
         setCameraPosSafe(cam, px, py, pz);
-        event.setRoll(-8.0F);
     }
 
     private static void onRenderPlayerPre(RenderPlayerEvent.Pre<?> event) {
@@ -1539,7 +1563,7 @@ public final class ReviveClient {
                         double rad = Math.toRadians(draggerRp.yBodyRot);
                         double bx = Math.sin(rad) * 0.42;
                         double bz = -Math.cos(rad) * 0.42;
-                        targetRp.setPos(draggerRp.getX() + bx, draggerRp.getY() + 0.68, draggerRp.getZ() + bz);
+                        targetRp.setPos(draggerRp.getX() + bx, draggerRp.getY() + 0.50, draggerRp.getZ() + bz);
                     } else {
                         targetRp.setPos(v.dragX(), v.dragY(), v.dragZ());
                     }
@@ -1583,7 +1607,7 @@ public final class ReviveClient {
                         if (p.getUUID().toString().equals(self.draggerUuid())) {
                             double rad = Math.toRadians(p.yBodyRot);
                             px = p.getX() + Math.sin(rad) * 0.42;
-                            py = p.getY() + 0.68;
+                            py = p.getY() + 0.50;
                             pz = p.getZ() - Math.cos(rad) * 0.42;
                             break;
                         }
@@ -1680,7 +1704,16 @@ public final class ReviveClient {
             me.setNoGravity(false);
             me.setForcedPose(null);
         } else {
-            applyDragCameraLock(me, findHeldTarget(me));
+            DownedView held = findHeldTarget(me);
+            if (held != null) {
+                wasHoldingTarget = true;
+                me.setForcedPose(Pose.CROUCHING);
+                me.setSprinting(false);
+            } else if (wasHoldingTarget) {
+                wasHoldingTarget = false;
+                me.setForcedPose(null);
+            }
+            applyDragCameraLock(me, held);
         }
 
         boolean giveUpDown = (self != null && mc.isWindowActive() && mc.gui.screen() == null && mc.options.keyJump.isDown());
@@ -1714,10 +1747,11 @@ public final class ReviveClient {
         }
         DownedView held = findHeldTarget(me);
         if (held != null && (held.holdMode() == MODE_DRAG || held.holdMode() == MODE_CARRY)) {
+            // Carrier & dragger are both forced into crouch instead of slowness
             ClientInput ci = event.getInput();
             Input k = ci.keyPresses;
             boolean allowJump = (held.holdMode() == MODE_CARRY) && k.jump();
-            ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), allowJump, k.shift(), false);
+            ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), allowJump, true, false);
             me.setSprinting(false);
         }
     }
@@ -1947,39 +1981,49 @@ public final class ReviveClient {
                     : (v.bleedTicks() / (double) v.maxBleedTicks());
             ratio = Math.max(0.0, Math.min(1.0, ratio));
 
-            float distScale = (float) Math.max(0.45, Math.min(1.0, 8.5 / Math.max(5.0, dist)));
-            int accentCol = reviving ? 0xFF4ADE80 : (held ? 0xFF38BDF8 : (v.bleedTicks() <= 400 ? 0xFFFF5A5A : 0xFFE85454));
+            float distScale = (float) Math.max(0.40, Math.min(1.0, 8.5 / Math.max(5.0, dist)));
+            int accentCol = reviving ? 0xFF4ADE80 : (held ? 0xFF38BDF8 : (v.bleedTicks() <= 400 ? 0xFFFF5A5A : 0xFFE86A58));
             int pct = (int) Math.round(ratio * 100.0);
-            String label = formatCountdown(v.bleedTicks()) + " · " + pct + "%";
+            String pctTxt = pct + "%";
+            String timeTxt = formatCountdown(v.bleedTicks());
 
             g.pose().pushMatrix();
             g.pose().translate((float) cx, (float) cy);
             g.pose().scale(distScale, distScale);
 
-            int tw = (int) Math.ceil(font.width(label) * 0.75F);
-            int pw = Math.max(46, tw + 14);
-            int ph = 15;
-            int px0 = -pw / 2;
-            int py0 = -ph / 2;
-
-            // Sleek clipped-corner dark espresso pill + 1px hairline border + sharp 2px progress strip
-            g.fill(px0 + 1, py0, px0 + pw - 1, py0 + ph, 0xCC110D0A);
-            g.fill(px0, py0 + 1, px0 + pw, py0 + ph - 1, 0xCC110D0A);
-            g.fill(px0 + 1, py0, px0 + pw - 1, py0 + 1, 0xAA3B2D21);
-            g.fill(px0 + 1, py0 + ph - 1, px0 + pw - 1, py0 + ph, 0xAA3B2D21);
-
-            int barW = pw - 4;
-            int fillW = (int) Math.round(barW * ratio);
-            g.fill(px0 + 2, py0 + ph - 3, px0 + 2 + barW, py0 + ph - 1, 0xFF241B15);
-            if (fillW > 0) {
-                g.fill(px0 + 2, py0 + ph - 3, px0 + 2 + fillW, py0 + ph - 1, accentCol);
+            // Pixel-rasterized zero-gap frosted disc + smooth 2.4px percentage ring
+            double innerR = 9.0;
+            double outerR = 11.4;
+            int rLim = 12;
+            for (int dy = -rLim; dy <= rLim; dy++) {
+                for (int dx = -rLim; dx <= rLim; dx++) {
+                    double d = Math.sqrt(dx * dx + dy * dy);
+                    if (d <= innerR) {
+                        g.fill(dx, dy, dx + 1, dy + 1, 0x9E110D0A);
+                    } else if (d <= outerR) {
+                        double ang = Math.atan2(dy, dx) + Math.PI / 2.0;
+                        if (ang < 0.0) ang += Math.PI * 2.0;
+                        double frac = ang / (Math.PI * 2.0);
+                        int col = (frac <= ratio) ? accentCol : 0x553B2D21;
+                        g.fill(dx, dy, dx + 1, dy + 1, col);
+                    }
+                }
             }
 
+            // Crisp % centered inside circle
             g.pose().pushMatrix();
-            g.pose().translate(0.0F, (float) (py0 + 3.0));
-            g.pose().scale(0.75F, 0.75F);
-            int lw = font.width(label);
-            g.text(font, label, -lw / 2, 0, 0xFFF5ECE0, true);
+            g.pose().translate(0.0F, -2.3F);
+            g.pose().scale(0.58F, 0.58F);
+            int pw = font.width(pctTxt);
+            g.text(font, pctTxt, -pw / 2, 0, 0xFFF5ECE0, true);
+            g.pose().popMatrix();
+
+            // Clean shadowed countdown time directly below circle
+            g.pose().pushMatrix();
+            g.pose().translate(0.0F, 14.0F);
+            g.pose().scale(0.68F, 0.68F);
+            int tw = font.width(timeTxt);
+            g.text(font, timeTxt, -tw / 2, 0, accentCol, true);
             g.pose().popMatrix();
 
             g.pose().popMatrix();
