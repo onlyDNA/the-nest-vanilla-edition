@@ -31,11 +31,14 @@ except Exception:
     pass
 
 RESOURCE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(RESOURCE_DIR, "launcher_config.json")
+_ALT_CFG = os.path.join(RESOURCE_DIR, "alt_launcher_config.json")
+_USE_ALT_CFG = os.path.exists(_ALT_CFG) and (getattr(sys, "frozen", False) or "--alt" in sys.argv)
+CONFIG_PATH = _ALT_CFG if _USE_ALT_CFG else os.path.join(RESOURCE_DIR, "launcher_config.json")
 
 DEFAULT_INSTALL_ROOT = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "TheNestVanilla")
 STATE_DIR = DEFAULT_INSTALL_ROOT
 STATE_PATH = os.path.join(STATE_DIR, "launcher_state.json")
+ALT_STATE_PATH = os.path.join(STATE_DIR, "alt_launcher_state.json")
 
 CF_INSTALL_DIR = r"C:\Users\katen\curseforge\minecraft\Install"
 CF_JAVA_25 = os.path.join(CF_INSTALL_DIR, "java", "java-runtime-epsilon", "bin", "javaw.exe")
@@ -1339,21 +1342,32 @@ class NestLauncher:
                 "default_ram_gb": 6,
             },
         )
+        self.is_alt = bool(self.cfg.get("alt_mode", False))
+        self.state_path = ALT_STATE_PATH if self.is_alt else STATE_PATH
+        main_state = load_json(STATE_PATH, {}) if self.is_alt else {}
+        default_root = main_state.get("install_root") or DEFAULT_INSTALL_ROOT
+        default_nick = (
+            suggest_alt_nick(main_state.get("nick", "Nest"), {main_state.get("nick", "")})
+            if self.is_alt
+            else ""
+        )
         self.state = load_json(
-            STATE_PATH,
+            self.state_path,
             {
-                "nick": "",
+                "nick": default_nick,
                 "uuid": "",
-                "ram_gb": self.cfg.get("default_ram_gb", 6),
-                "install_root": DEFAULT_INSTALL_ROOT,
+                "ram_gb": self.cfg.get("default_ram_gb", 4 if self.is_alt else 6),
+                "install_root": default_root,
                 "skin_mode": "mojang",
                 "skin_slim": False,
                 "skin_preset_name": "",
                 "skin_png_b64": "",
             },
         )
+        if self.is_alt and not self.state.get("nick"):
+            self.state["nick"] = default_nick
         if not self.state.get("install_root"):
-            self.state["install_root"] = DEFAULT_INSTALL_ROOT
+            self.state["install_root"] = default_root
 
         self.busy = False
         self.ui_queue: queue.Queue = queue.Queue()
@@ -1391,7 +1405,6 @@ class NestLauncher:
             self._trigger_lookup(initial_nick)
         self._ping_busy = False
         self.root.after(200, self._schedule_server_ping)
-        self.root.after(350, self._check_active_client_banner)
 
     @property
     def install_root(self) -> str:
@@ -1407,7 +1420,7 @@ class NestLauncher:
 
     @property
     def active_game_dir(self) -> str:
-        return self.alt_game_dir if getattr(self, "alt_client_var", None) and self.alt_client_var.get() else self.game_dir
+        return self.alt_game_dir if self.is_alt else self.game_dir
 
     @property
     def runtime_dir(self) -> str:
@@ -1591,9 +1604,10 @@ class NestLauncher:
         make_button(loc_top, "Open", SURFACE_ALT, "#3a2d21", TEXT, self._open_game_dir, 8, 2, 8).pack(side="right")
         make_button(loc_top, "Change...", SURFACE_ALT, "#3a2d21", ACCENT, self._choose_folder, 8, 2, 8).pack(side="right", padx=(0, 6))
 
+        path_display = f"{self.install_root} (instance_alt)" if self.is_alt else self.install_root
         self.path_lbl = tk.Label(
             loc,
-            text=self.install_root,
+            text=path_display,
             font=("Cascadia Mono", 8),
             bg=SURFACE,
             fg=TEXT,
@@ -1606,7 +1620,7 @@ class NestLauncher:
         opts.pack(fill="x")
 
         tk.Label(opts, text="Memory", font=("Segoe UI", 8, "bold"), bg=BG, fg=MUTED).pack(side="left")
-        self.ram_var = tk.StringVar(value=f"{self.state.get('ram_gb', 6)} GB")
+        self.ram_var = tk.StringVar(value=f"{self.state.get('ram_gb', 4 if self.is_alt else 6)} GB")
         ttk.Combobox(
             opts,
             textvariable=self.ram_var,
@@ -1617,36 +1631,21 @@ class NestLauncher:
             style="Nest.TCombobox",
         ).pack(side="left", padx=(8, 0))
 
-        self.alt_client_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(
-            opts,
-            text="2nd Client (Alt)",
-            variable=self.alt_client_var,
-            command=self._on_alt_toggle,
-            bg=BG,
-            fg=MUTED,
-            activebackground=BG,
-            activeforeground=TEXT,
-            selectcolor=INPUT_BG,
-            font=("Segoe UI", 8, "bold"),
-            cursor="hand2",
-            bd=0,
-            highlightthickness=0,
-        ).pack(side="left", padx=(12, 0))
-
         make_button(opts, "Check Updates", SURFACE, SURFACE_ALT, ACCENT, self._check_only, 10, 4, 8).pack(side="right")
 
         # 5. Bottom Play Button + Progress
         bottom = tk.Frame(self.root, bg=BG, padx=24)
         bottom.pack(side="bottom", fill="x", pady=(0, 18))
 
-        self.status_lbl = tk.Label(bottom, text="Ready.", font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w")
+        init_status = "Alt Test Client ready (isolated instance_alt)." if self.is_alt else "Ready."
+        self.status_lbl = tk.Label(bottom, text=init_status, font=("Segoe UI", 8), bg=BG, fg=MUTED, anchor="w")
         self.status_lbl.pack(fill="x", pady=(0, 5))
 
         self.progress = ttk.Progressbar(bottom, style="Nest.Horizontal.TProgressbar", mode="determinate", maximum=100)
         self.progress.pack(fill="x", pady=(0, 12))
 
-        self.play_btn = make_button(bottom, "PLAY", GOLD_BTN, GOLD_HOVER, GOLD_FG, self._on_play, 16, 10, 11)
+        self._play_btn_text = "PLAY ALT CLIENT" if self.is_alt else "PLAY"
+        self.play_btn = make_button(bottom, self._play_btn_text, GOLD_BTN, GOLD_HOVER, GOLD_FG, self._on_play, 16, 10, 11)
         self.play_btn.pack(fill="x")
 
     def _poll_ui_queue(self) -> None:
@@ -1705,8 +1704,8 @@ class NestLauncher:
         if os.path.basename(chosen).lower() != "thenestvanilla":
             chosen = os.path.join(chosen, "TheNestVanilla")
         self.state["install_root"] = chosen
-        save_json(STATE_PATH, self.state)
-        self.path_lbl.configure(text=chosen)
+        save_json(self.state_path, self.state)
+        self.path_lbl.configure(text=f"{chosen} (instance_alt)" if self.is_alt else chosen)
         self._set_status(f"Install path set to {chosen}", ACCENT, 0)
 
     def _on_nick_changed(self, *_args) -> None:
@@ -1762,7 +1761,7 @@ class NestLauncher:
         self.state["skin_slim"] = bool(slim)
         self.state["skin_preset_name"] = preset_name
         self.state["skin_png_b64"] = base64.b64encode(png_bytes).decode("ascii") if png_bytes else ""
-        save_json(STATE_PATH, self.state)
+        save_json(self.state_path, self.state)
 
         self._write_client_skin_config()
         self._set_avatar_from_grid(grid)
@@ -1799,7 +1798,7 @@ class NestLauncher:
         }
         if target_game_dir:
             target_dirs = [os.path.join(target_game_dir, "config")]
-        elif getattr(self, "alt_client_var", None) and self.alt_client_var.get():
+        elif self.is_alt:
             target_dirs = [os.path.join(self.alt_game_dir, "config")]
         else:
             target_dirs = [os.path.join(self.game_dir, "config")]
@@ -1818,28 +1817,23 @@ class NestLauncher:
         self._debounce_id = None
         self._lookup_seq += 1
         seq = self._lookup_seq
-        is_alt = bool(getattr(self, "alt_client_var", None) and self.alt_client_var.get())
-        threading.Thread(target=self._lookup_nick_worker, args=(nick, seq, is_alt), daemon=True).start()
+        threading.Thread(target=self._lookup_nick_worker, args=(nick, seq), daemon=True).start()
 
-    def _lookup_nick_worker(self, nick: str, seq: int, is_alt: bool = False) -> None:
+    def _lookup_nick_worker(self, nick: str, seq: int) -> None:
         resolved_name, uid, is_official, skin_png, is_slim = fetch_mojang_skin_png(nick)
         if seq != self._lookup_seq:
             return
         self._last_looked_up = resolved_name
-        if is_alt:
-            self.state["alt_nick"] = resolved_name
-            self.state["alt_uuid"] = uid
-        else:
-            self.state["nick"] = resolved_name
-            self.state["uuid"] = uid
+        self.state["nick"] = resolved_name
+        self.state["uuid"] = uid
         self._mojang_skin_bytes = skin_png
         self._mojang_skin_slim = is_slim
 
         if self.state.get("skin_mode", "mojang") == "mojang" and skin_png:
             self.state["skin_slim"] = is_slim
             self.state["skin_png_b64"] = base64.b64encode(skin_png).decode("ascii")
-        save_json(STATE_PATH, self.state)
-        self._write_client_skin_config(self.alt_game_dir if is_alt else self.game_dir)
+        save_json(self.state_path, self.state)
+        self._write_client_skin_config(self.active_game_dir)
 
         avatar_bytes = None
         if is_official and not skin_png:
@@ -1890,51 +1884,6 @@ class NestLauncher:
         os.makedirs(target, exist_ok=True)
         os.startfile(target)
 
-    def _check_active_client_banner(self) -> None:
-        def _worker() -> None:
-            running = find_running_clients_for_dir(self.game_dir)
-            if not running:
-                return
-            active_nick = running[0].get("username", "Player")
-            def _apply() -> None:
-                if not self.busy and not self.alt_client_var.get():
-                    self._set_status(f"Client active ({active_nick}) · check '2nd Client (Alt)' to open a 2nd game.", ACCENT)
-            self._safe_ui(_apply)
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def _on_alt_toggle(self) -> None:
-        cur_nick = self.nick_var.get().strip()
-        try:
-            cur_ram = int(self.ram_var.get().split()[0])
-        except Exception:
-            cur_ram = 6
-
-        if self.alt_client_var.get():
-            if RE_VALID_NICK.match(cur_nick):
-                self.state["nick"] = cur_nick
-            self.state["ram_gb"] = cur_ram
-            alt_nick = (self.state.get("alt_nick") or "").strip()
-            if not RE_VALID_NICK.match(alt_nick) or alt_nick.lower() == self.state.get("nick", "").lower():
-                alt_nick = suggest_alt_nick(self.state.get("nick", "Nest"), {self.state.get("nick", "")})
-            self.state["alt_nick"] = alt_nick
-            alt_ram = int(self.state.get("alt_ram_gb", 4))
-            save_json(STATE_PATH, self.state)
-
-            self.nick_var.set(alt_nick)
-            self.ram_var.set(f"{alt_ram} GB")
-            self.path_lbl.configure(text=f"{self.install_root} (instance_alt)")
-            self._set_status("2nd Client (Alt) enabled · isolated folder + 4 GB safe RAM.", ACCENT)
-        else:
-            if RE_VALID_NICK.match(cur_nick):
-                self.state["alt_nick"] = cur_nick
-            self.state["alt_ram_gb"] = cur_ram
-            save_json(STATE_PATH, self.state)
-
-            self.nick_var.set(self.state.get("nick", ""))
-            self.ram_var.set(f"{int(self.state.get('ram_gb', 6))} GB")
-            self.path_lbl.configure(text=self.install_root)
-            self._set_status("Ready.", MUTED)
-
     def _check_only(self) -> None:
         if self.busy:
             return
@@ -1950,68 +1899,45 @@ class NestLauncher:
             return
 
         ram_gb = int(self.ram_var.get().split()[0])
-        use_alt = bool(self.alt_client_var.get())
-        running_main = find_running_clients_for_dir(self.game_dir)
-
-        if not use_alt and running_main:
-            active_nick = running_main[0].get("username", "Player")
-            switch = messagebox.askyesno(
-                "Client Already Running",
-                f"Minecraft ({active_nick}) is already running in 'instance'.\n\n"
-                "Opening two clients in the same folder crashes Voxy (RocksDB lock).\n\n"
-                "Launch a separate 2nd Test Client in 'instance_alt' instead?",
-            )
-            if not switch:
-                return
-            self.state["nick"] = nick
-            self.state["ram_gb"] = ram_gb
-            use_alt = True
-            self.alt_client_var.set(True)
-            avoid = {p.get("username", "") for p in running_main}
-            if nick.lower() in {a.lower() for a in avoid}:
-                alt_saved = (self.state.get("alt_nick") or "").strip()
-                if RE_VALID_NICK.match(alt_saved) and alt_saved.lower() not in {a.lower() for a in avoid}:
-                    nick = alt_saved
-                else:
-                    nick = suggest_alt_nick(nick, avoid)
-                self.nick_var.set(nick)
-            if ram_gb > 4:
-                ram_gb = int(self.state.get("alt_ram_gb", 4))
-                self.ram_var.set(f"{ram_gb} GB")
-            self.path_lbl.configure(text=f"{self.install_root} (instance_alt)")
-
-        if use_alt:
+        if self.is_alt:
             running_alt = find_running_clients_for_dir(self.alt_game_dir)
             if running_alt:
                 messagebox.showwarning(
-                    "2nd Client Already Running",
-                    f"A 2nd client ({running_alt[0].get('username', 'Player')}) is already running in 'instance_alt'.",
+                    "Alt Client Already Running",
+                    f"An alt client ({running_alt[0].get('username', 'Player')}) is already running in 'instance_alt'.",
                 )
                 return
+            running_main = find_running_clients_for_dir(self.game_dir)
             avoid = {p.get("username", "") for p in running_main}
             if nick.lower() in {a.lower() for a in avoid}:
                 new_alt = suggest_alt_nick(nick, avoid)
                 ok_rename = messagebox.askyesno(
                     "Duplicate Nickname",
-                    f"'{nick}' is already logged in on the active client.\n"
+                    f"'{nick}' is already logged in on your main client.\n"
                     "Joining the server with the same name would kick the first client.\n\n"
-                    f"Use '{new_alt}' for the 2nd client instead?",
+                    f"Use '{new_alt}' for this alt client instead?",
                 )
                 if not ok_rename:
                     return
                 nick = new_alt
                 self.nick_var.set(nick)
-            self.state["alt_nick"] = nick
-            self.state["alt_ram_gb"] = ram_gb
         else:
-            self.state["nick"] = nick
-            self.state["ram_gb"] = ram_gb
+            running_main = find_running_clients_for_dir(self.game_dir)
+            if running_main:
+                messagebox.showwarning(
+                    "Minecraft Already Running",
+                    f"Minecraft ({running_main[0].get('username', 'Player')}) is already running in 'instance'.\n"
+                    "Close it before launching again so Voxy does not hit a storage lock crash.",
+                )
+                return
 
-        save_json(STATE_PATH, self.state)
+        self.state["nick"] = nick
+        self.state["ram_gb"] = ram_gb
+        save_json(self.state_path, self.state)
 
         self.busy = True
         self.play_btn.configure(state="disabled", text="SYNCING...")
-        threading.Thread(target=self._sync_worker, args=(True, use_alt, nick, ram_gb), daemon=True).start()
+        threading.Thread(target=self._sync_worker, args=(True, nick, ram_gb), daemon=True).start()
 
     def _prepare_alt_instance(self) -> None:
         self._set_status("Preparing isolated 2nd client (instance_alt)...", TEXT, 66)
@@ -2035,25 +1961,21 @@ class NestLauncher:
     def _sync_worker(
         self,
         launch_after: bool,
-        use_alt: bool = False,
         launch_nick: str | None = None,
         launch_ram_gb: int | None = None,
     ) -> None:
         try:
-            active_nick = (launch_nick or self.state.get("alt_nick" if use_alt else "nick", "")).strip()
+            active_nick = (launch_nick or self.state.get("nick", "")).strip()
             resolved_name, uid, _ok, skin_png, is_slim = fetch_mojang_skin_png(active_nick)
-            if use_alt:
-                self.state["alt_nick"], self.state["alt_uuid"] = resolved_name, uid
-            else:
-                self.state["nick"], self.state["uuid"] = resolved_name, uid
+            self.state["nick"], self.state["uuid"] = resolved_name, uid
             if skin_png:
                 self._mojang_skin_bytes = skin_png
                 self._mojang_skin_slim = is_slim
-            save_json(STATE_PATH, self.state)
+            save_json(self.state_path, self.state)
 
             self._sync_from_github()
-            target_dir = self.alt_game_dir if use_alt else self.game_dir
-            if use_alt:
+            target_dir = self.active_game_dir
+            if self.is_alt:
                 self._prepare_alt_instance()
             self._write_client_skin_config(target_dir)
             if launch_after:
@@ -2074,11 +1996,11 @@ class NestLauncher:
         except Exception as exc:
             self.busy = False
             self._set_status(f"Error: {exc}", ERR_RED)
-            self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
+            self._safe_ui(lambda: self.play_btn.configure(state="normal", text=self._play_btn_text))
             self._safe_ui(lambda msg=str(exc): messagebox.showerror("Launcher Error", msg))
             return
         self.busy = False
-        self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
+        self._safe_ui(lambda: self.play_btn.configure(state="normal", text=self._play_btn_text))
 
     @staticmethod
     def _parse_semver(ver: str) -> tuple[int, ...]:
@@ -2088,8 +2010,12 @@ class NestLauncher:
     def _check_self_update(self, manifest: dict) -> None:
         if not getattr(sys, "frozen", False):
             return
-        remote_sha = str(manifest.get("launcher_sha256") or "").strip().lower()
-        remote_url = str(manifest.get("launcher_url") or self.cfg.get("launcher_url") or "").strip()
+        sha_key = "alt_launcher_sha256" if self.is_alt else "launcher_sha256"
+        url_key = "alt_launcher_url" if self.is_alt else "launcher_url"
+        ver_key = "alt_launcher_version" if self.is_alt else "launcher_version"
+
+        remote_sha = str(manifest.get(sha_key) or "").strip().lower()
+        remote_url = str(manifest.get(url_key) or self.cfg.get("launcher_url") or "").strip()
         if not remote_sha or not remote_url or "CHANGE_ME_" in remote_url:
             return
         current_exe = sys.executable
@@ -2097,7 +2023,7 @@ class NestLauncher:
             return
 
         local_ver = str(self.cfg.get("launcher_version") or "0.0.0")
-        new_ver = str(manifest.get("launcher_version") or "0.0.0")
+        new_ver = str(manifest.get(ver_key) or "0.0.0")
         if self._parse_semver(new_ver) < self._parse_semver(local_ver):
             return
 
@@ -2107,7 +2033,9 @@ class NestLauncher:
 
         self._set_status(f"Updating launcher to v{new_ver}...", ACCENT, 12)
         os.makedirs(STATE_DIR, exist_ok=True)
-        tmp_exe = os.path.join(STATE_DIR, "TheNestLauncher.new.exe")
+        tmp_name = "TheNestAltLauncher.new.exe" if self.is_alt else "TheNestLauncher.new.exe"
+        cmd_name = "update_alt_launcher.cmd" if self.is_alt else "update_launcher.cmd"
+        tmp_exe = os.path.join(STATE_DIR, tmp_name)
         sep = "&" if "?" in remote_url else "?"
         busted_url = f"{remote_url}{sep}cb={remote_sha[:10]}"
         try:
@@ -2121,7 +2049,7 @@ class NestLauncher:
             self._set_status("Launcher update CDN syncing; continuing with current version...", ACCENT, 14)
             return
 
-        cmd_path = os.path.join(STATE_DIR, "update_launcher.cmd")
+        cmd_path = os.path.join(STATE_DIR, cmd_name)
         bat = (
             "@echo off\n"
             "set /a tries=0\n"

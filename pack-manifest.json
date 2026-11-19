@@ -1,8 +1,8 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "launcher_version": "1.4.1",
-  "launcher_sha256": "b2871ae4157200b44ed4c051f6345324f4980d187f5a07bde47298209322afd0",
+  "launcher_version": "1.4.2",
+  "launcher_sha256": "bcd407e0cf6285f46ad85b49c90c4c2d2055e739d6bbe9f91715e029a8c6a17e",
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Launcher.exe",
   "server_address": "25.20.236.131:25565",
   "generated_at": "2026-11-19T17:43:15Z",
@@ -1922,5 +1922,8 @@
       "sha256": "09bca50ae6f58eea972a1f15966c42e93702ee430ecafdd23a2eb1b39ab72b8c",
       "size": 36806
     }
-  }
+  },
+  "alt_launcher_version": "1.0.0",
+  "alt_launcher_sha256": "bd6aeec1116d2a7858a44e090071cb3163bcb839f0f65268bdee7fb9e53e6d64",
+  "alt_launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Alt%20Launcher.exe"
 }
