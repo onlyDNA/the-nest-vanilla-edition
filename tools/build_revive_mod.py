@@ -760,6 +760,7 @@ public final class ReviveClient {
     ) {}
 
     private static volatile List<DownedView> DOWNED_LIST = List.of();
+    private static volatile boolean wasSelfDowned = false;
     private static volatile boolean lastUseHeld = false;
     private static volatile boolean lastGiveUpHeld = false;
     private static volatile int localGiveUpTicks = 0;
@@ -776,6 +777,7 @@ public final class ReviveClient {
 
     private static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         DOWNED_LIST = List.of();
+        wasSelfDowned = false;
         lastUseHeld = false;
         lastGiveUpHeld = false;
         localGiveUpTicks = 0;
@@ -830,9 +832,11 @@ public final class ReviveClient {
 
         DownedView self = findSelf(me);
         if (self != null) {
+            wasSelfDowned = true;
             me.setForcedPose(Pose.SWIMMING);
             me.setSprinting(false);
-        } else if (me.getForcedPose() == Pose.SWIMMING && !me.isInWater()) {
+        } else if (wasSelfDowned) {
+            wasSelfDowned = false;
             me.setForcedPose(null);
         }
 
@@ -877,55 +881,73 @@ public final class ReviveClient {
         DownedView self = findSelf(me);
 
         if (self != null) {
-            int bw = 240;
-            int bh = 48;
+            int bw = 216;
+            int bh = 44;
             int bx = (sw - bw) / 2;
-            int by = sh - 102;
+            int by = sh - 98;
             boolean reviving = self.reviveTicks() > 0 && !self.reviverName().isEmpty();
+            boolean urgent = !reviving && self.bleedTicks() <= 200; // < 10s
 
-            int border = reviving ? 0xFF5BD178 : 0xFFE06C60;
-            g.fill(bx, by, bx + bw, by + bh, 0xE216110D);
+            int accent = reviving ? 0xFF4ADE80 : (localGiveUpTicks > 0 ? 0xFFE09F3E : 0xFFE84848);
+            int border = 0xFF3B2D21;
+
+            // Sleek warm espresso card + 1px hairline border + 3px left status bar
+            g.fill(bx, by, bx + bw, by + bh, 0xE8130E0B);
             g.fill(bx, by, bx + bw, by + 1, border);
             g.fill(bx, by + bh - 1, bx + bw, by + bh, border);
             g.fill(bx, by, bx + 1, by + bh, border);
             g.fill(bx + bw - 1, by, bx + bw, by + bh, border);
+            g.fill(bx, by, bx + 3, by + bh, accent);
 
-            String title;
+            String leftTitle;
+            String rightStat;
             double ratio;
             if (reviving) {
                 int pct = Math.min(100, (self.reviveTicks() * 100) / self.maxReviveTicks());
-                title = "REVIVING BY " + self.reviverName() + " (" + pct + "%)";
+                leftTitle = "REVIVING · " + self.reviverName();
+                rightStat = pct + "%";
                 ratio = Math.min(1.0, self.reviveTicks() / (double) self.maxReviveTicks());
             } else {
-                String secs = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
-                title = "WOUNDED — BLEEDING OUT (" + secs + ")";
+                leftTitle = "WOUNDED";
+                rightStat = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
                 ratio = Math.max(0.0, Math.min(1.0, self.bleedTicks() / (double) self.maxBleedTicks()));
             }
-            int tw = mc.font.width(title);
-            g.text(mc.font, title, bx + (bw - tw) / 2, by + 6, reviving ? 0xFF6BC482 : 0xFFF5ECE0, false);
+            int statW = mc.font.width(rightStat);
+            String clippedLeft = mc.font.plainSubstrByWidth(leftTitle, bw - statW - 26);
+            int leftCol = reviving ? 0xFF4ADE80 : (urgent ? 0xFFFF7A7A : 0xFFF5ECE0);
+            int statCol = reviving ? 0xFF6BC482 : (urgent ? 0xFFFF6464 : 0xFFE09F3E);
+            g.text(mc.font, clippedLeft, bx + 10, by + 6, leftCol, false);
+            g.text(mc.font, rightStat, bx + bw - 10 - statW, by + 6, statCol, false);
 
-            int barX = bx + 12;
+            // Layered bleedout / revive progress bar
+            int barX = bx + 10;
             int barY = by + 18;
-            int barW = bw - 24;
-            g.fill(barX, barY, barX + barW, barY + 6, 0xFF2B2118);
+            int barW = bw - 20;
+            g.fill(barX, barY, barX + barW, barY + 5, 0xFF241B15);
             int fillW = (int) Math.round(barW * ratio);
             if (fillW > 0) {
-                g.fill(barX, barY, barX + fillW, barY + 6, reviving ? 0xFF5BD178 : 0xFFE06C60);
+                int barCol = reviving ? 0xFF4ADE80 : 0xFFE05252;
+                g.fill(barX, barY, barX + fillW, barY + 5, barCol);
+                g.fill(barX + fillW - 1, barY, barX + fillW, barY + 5, 0x99FFFFFF);
             }
 
-            String sub;
+            // Clean Give Up row only
             if (localGiveUpTicks > 0) {
                 int gp = Math.min(100, (localGiveUpTicks * 100) / 30);
-                sub = "Giving up... " + gp + "% (release SPACE to cancel)";
+                String gTxt = "Giving Up... " + gp + "%";
+                g.text(mc.font, gTxt, bx + (bw - mc.font.width(gTxt)) / 2, by + 29, 0xFFE09F3E, false);
+                int gFill = (int) Math.round((bw - 3) * (localGiveUpTicks / 30.0));
+                if (gFill > 0) {
+                    g.fill(bx + 3, by + bh - 3, bx + 3 + gFill, by + bh, 0xFFE09F3E);
+                }
             } else {
-                sub = "Teammate: hold [SHIFT]/[Right-Click]  |  Hold [SPACE] Give Up";
+                String gTxt = "Hold [SPACE] to Give Up";
+                g.text(mc.font, gTxt, bx + (bw - mc.font.width(gTxt)) / 2, by + 29, 0xFFA89682, false);
             }
-            String cSub = mc.font.plainSubstrByWidth(sub, bw - 14);
-            g.text(mc.font, cSub, bx + (bw - mc.font.width(cSub)) / 2, by + 31, 0xFFA89682, false);
             return;
         }
 
-        // Healthy player HUD: active revive bar OR nearby downed teammate alerts
+        // Healthy player HUD: active revive bar OR compact downed alert
         String myName = me.getGameProfile().name();
         DownedView activeTarget = null;
         for (DownedView v : list) {
@@ -935,22 +957,23 @@ public final class ReviveClient {
             }
         }
         if (activeTarget != null) {
-            int bw = 210;
-            int bh = 34;
+            int bw = 196;
+            int bh = 32;
             int bx = (sw - bw) / 2;
-            int by = sh - 92;
+            int by = sh - 90;
             int pct = Math.min(100, (activeTarget.reviveTicks() * 100) / activeTarget.maxReviveTicks());
-            g.fill(bx, by, bx + bw, by + bh, 0xDD16110D);
-            g.fill(bx, by, bx + bw, by + 1, 0xFF5BD178);
-            g.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF5BD178);
-            g.fill(bx, by, bx + 1, by + bh, 0xFF5BD178);
-            g.fill(bx + bw - 1, by, bx + bw, by + bh, 0xFF5BD178);
-            String title = "REVIVING " + activeTarget.name() + " (" + pct + "%)";
-            g.text(mc.font, title, bx + (bw - mc.font.width(title)) / 2, by + 6, 0xFF6BC482, false);
-            int barW = bw - 24;
+            g.fill(bx, by, bx + bw, by + bh, 0xE8130E0B);
+            g.fill(bx, by, bx + bw, by + 1, 0xFF3B2D21);
+            g.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF3B2D21);
+            g.fill(bx, by, bx + 3, by + bh, 0xFF4ADE80);
+            String title = "REVIVING " + activeTarget.name();
+            String pTxt = pct + "%";
+            g.text(mc.font, mc.font.plainSubstrByWidth(title, bw - 44), bx + 10, by + 6, 0xFFF5ECE0, false);
+            g.text(mc.font, pTxt, bx + bw - 10 - mc.font.width(pTxt), by + 6, 0xFF4ADE80, false);
+            int barW = bw - 20;
             int fillW = (int) Math.round(barW * Math.min(1.0, activeTarget.reviveTicks() / (double) activeTarget.maxReviveTicks()));
-            g.fill(bx + 12, by + 19, bx + 12 + barW, by + 25, 0xFF2B2118);
-            if (fillW > 0) g.fill(bx + 12, by + 19, bx + 12 + fillW, by + 25, 0xFF5BD178);
+            g.fill(bx + 10, by + 19, bx + 10 + barW, by + 24, 0xFF241B15);
+            if (fillW > 0) g.fill(bx + 10, by + 19, bx + 10 + fillW, by + 24, 0xFF4ADE80);
         }
 
         String myDim = me.level().dimension().identifier().toString();
@@ -962,11 +985,11 @@ public final class ReviveClient {
             double dz = v.z() - me.getZ();
             int dist = (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
             String secs = String.format(Locale.ROOT, "%.0fs", Math.max(0, v.bleedTicks()) / 20.0);
-            String alert = "! " + v.name() + " DOWN (" + dist + "m · " + secs + ") — Hold SHIFT near";
+            String alert = "! " + v.name() + " DOWN · " + dist + "m · " + secs;
             int aw = mc.font.width(alert) + 14;
             int ax = sw - aw - 8;
-            g.fill(ax, ay, ax + aw, ay + 16, 0xDD16110D);
-            g.fill(ax, ay, ax + 2, ay + 16, 0xFFE06C60);
+            g.fill(ax, ay, ax + aw, ay + 16, 0xDD130E0B);
+            g.fill(ax, ay, ax + 2, ay + 16, 0xFFE84848);
             g.text(mc.font, alert, ax + 7, ay + 4, 0xFFF5ECE0, false);
             ay += 19;
         }
