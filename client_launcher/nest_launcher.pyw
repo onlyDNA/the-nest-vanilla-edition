@@ -2080,6 +2080,11 @@ class NestLauncher:
         self.busy = False
         self._safe_ui(lambda: self.play_btn.configure(state="normal", text="PLAY"))
 
+    @staticmethod
+    def _parse_semver(ver: str) -> tuple[int, ...]:
+        parts = [int(p) for p in re.findall(r"\d+", str(ver or ""))]
+        return tuple(parts) if parts else (0,)
+
     def _check_self_update(self, manifest: dict) -> None:
         if not getattr(sys, "frozen", False):
             return
@@ -2090,15 +2095,31 @@ class NestLauncher:
         current_exe = sys.executable
         if not os.path.exists(current_exe):
             return
+
+        local_ver = str(self.cfg.get("launcher_version") or "0.0.0")
+        new_ver = str(manifest.get("launcher_version") or "0.0.0")
+        if self._parse_semver(new_ver) < self._parse_semver(local_ver):
+            return
+
         local_sha = sha256_file(current_exe).lower()
         if local_sha == remote_sha:
             return
 
-        new_ver = manifest.get("launcher_version", "new")
         self._set_status(f"Updating launcher to v{new_ver}...", ACCENT, 12)
         os.makedirs(STATE_DIR, exist_ok=True)
         tmp_exe = os.path.join(STATE_DIR, "TheNestLauncher.new.exe")
-        download_file(remote_url, tmp_exe, remote_sha)
+        sep = "&" if "?" in remote_url else "?"
+        busted_url = f"{remote_url}{sep}cb={remote_sha[:10]}"
+        try:
+            download_file(busted_url, tmp_exe, remote_sha)
+        except Exception:
+            if os.path.exists(tmp_exe):
+                try:
+                    os.remove(tmp_exe)
+                except Exception:
+                    pass
+            self._set_status("Launcher update CDN syncing; continuing with current version...", ACCENT, 14)
+            return
 
         cmd_path = os.path.join(STATE_DIR, "update_launcher.cmd")
         bat = (
