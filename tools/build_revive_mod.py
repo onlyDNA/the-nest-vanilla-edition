@@ -640,9 +640,9 @@ public final class ReviveServerManager {
                 startY = sp.getY() + 1.15;
                 startZ = sp.getZ();
             }
-            double vx = lx * 0.64;
-            double vy = Math.max(0.50, Math.min(0.76, 0.56 + look.y * 0.25));
-            double vz = lz * 0.64;
+            double vx = lx * 0.36;
+            double vy = Math.max(0.36, Math.min(0.52, 0.40 + look.y * 0.14));
+            double vz = lz * 0.36;
 
             held.draggerId = null;
             held.draggerName = "";
@@ -904,15 +904,9 @@ public final class ReviveServerManager {
                     double lx = look.x, lz = look.z;
                     double ll = Math.hypot(lx, lz);
                     if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
-                    double sx = dragger.getX() - lx * 0.66;
-                    double sy = dragger.getY() + 1.40;
-                    double sz = dragger.getZ() - lz * 0.66;
-                    BlockPos behindPos = BlockPos.containing(sx, sy + 0.25, sz);
-                    if (dragger.level().getBlockState(behindPos).isSolid()) {
-                        sx = dragger.getX();
-                        sy = dragger.getY() + 1.84;
-                        sz = dragger.getZ();
-                    }
+                    double sx = dragger.getX() - lx * 0.35;
+                    double sy = dragger.getY() + 1.90;
+                    double sz = dragger.getZ() - lz * 0.35;
                     entry.dragX = sx;
                     entry.dragY = sy;
                     entry.dragZ = sz;
@@ -1306,19 +1300,34 @@ public final class ReviveClient {
     }
 
     private static void applyDragCameraLock(LocalPlayer me, DownedView held) {
+        Minecraft mc = Minecraft.getInstance();
         if (me != null && held != null && held.holdMode() == MODE_DRAG) {
-            if (!dragLockActive) {
-                dragLockYaw = me.getYRot();
-                dragLockPitch = me.getXRot();
-                dragLockActive = true;
-            } else {
-                float diff = Mth.wrapDegrees(me.getYRot() - dragLockYaw);
-                if (diff > 90.0F || diff < -90.0F) {
-                    float clampedYaw = dragLockYaw + Math.max(-90.0F, Math.min(90.0F, diff));
-                    me.setYRot(clampedYaw);
-                    me.yRotO = clampedYaw;
-                    me.yHeadRot = clampedYaw;
+            double tx = held.x();
+            double tz = held.z();
+            if (mc.level != null) {
+                for (Player rp : mc.level.players()) {
+                    if (rp.getUUID().toString().equals(held.uuid())) {
+                        tx = rp.getX();
+                        tz = rp.getZ();
+                        break;
+                    }
                 }
+            }
+            double dx = tx - me.getX();
+            double dz = tz - me.getZ();
+            if (dx * dx + dz * dz > 1e-4) {
+                dragLockYaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
+                dragLockActive = true;
+            } else if (!dragLockActive) {
+                dragLockYaw = me.getYRot();
+                dragLockActive = true;
+            }
+            float diff = Mth.wrapDegrees(me.getYRot() - dragLockYaw);
+            if (diff > 90.0F || diff < -90.0F) {
+                float clampedYaw = dragLockYaw + Math.max(-90.0F, Math.min(90.0F, diff));
+                me.setYRot(clampedYaw);
+                me.yRotO = clampedYaw;
+                me.yHeadRot = clampedYaw;
             }
         } else {
             dragLockActive = false;
@@ -1345,7 +1354,8 @@ public final class ReviveClient {
         if (ent == null) return;
         String uid = ent.getUUID().toString();
         for (DownedView v : DOWNED_LIST) {
-            if (uid.equals(v.uuid()) && v.holdMode() == MODE_DRAG) {
+            if (!uid.equals(v.uuid())) continue;
+            if (v.holdMode() == MODE_DRAG) {
                 PoseStack ps = event.getPoseStack();
                 ps.pushPose();
                 double rad = Math.toRadians(event.getRenderState().bodyRot);
@@ -1358,6 +1368,12 @@ public final class ReviveClient {
                 ps.translate(0.0F, 0.28F, 0.0F);
                 ps.rotateDegrees(Axis.of(spineAxis), 180.0F);
                 ps.translate(0.0F, -0.28F, 0.0F);
+                FLIPPED_RENDER_IDS.add(entityId);
+                return;
+            } else if (v.holdMode() == MODE_CARRY) {
+                PoseStack ps = event.getPoseStack();
+                ps.pushPose();
+                ps.translate(0.0F, -0.48F, 0.0F);
                 FLIPPED_RENDER_IDS.add(entityId);
                 return;
             }
@@ -1400,7 +1416,15 @@ public final class ReviveClient {
                 }
                 if (carriedView != null) {
                     rp.noPhysics = true;
-                    rp.setPos(carriedView.dragX(), carriedView.dragY(), carriedView.dragZ());
+                    if (myId.equals(carriedView.draggerUuid())) {
+                        Vec3 look = me.getLookAngle();
+                        double lx = look.x, lz = look.z;
+                        double ll = Math.hypot(lx, lz);
+                        if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                        rp.setPos(me.getX() - lx * 0.35, me.getY() + 1.90, me.getZ() - lz * 0.35);
+                    } else {
+                        rp.setPos(carriedView.dragX(), carriedView.dragY(), carriedView.dragZ());
+                    }
                     rp.setDeltaMovement(0.0, 0.0, 0.0);
                     rp.setForcedPose(Pose.SWIMMING);
                 } else if (rp.noPhysics && !rp.isSpectator()) {
