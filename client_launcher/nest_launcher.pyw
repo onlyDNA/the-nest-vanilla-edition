@@ -137,6 +137,111 @@ def resolve_safe_ram_gb(requested_gb: int) -> tuple[int, str]:
     return safe, ""
 
 
+def suggest_alt_nick(main_nick: str, avoid_nicks: set[str] | None = None) -> str:
+    """Return a valid 3-16 char alt nickname distinct from main_nick and avoid_nicks."""
+    avoid = {n.lower() for n in (avoid_nicks or set()) if n}
+    base = re.sub(r"[^A-Za-z0-9_]", "", (main_nick or "").strip()) or "NestTester"
+    if base.lower() not in avoid and base.lower() != (main_nick or "").strip().lower() and RE_VALID_NICK.match(base):
+        return base
+    candidates = [f"{base[:12]}_Alt"]
+    for i in range(2, 20):
+        suffix = f"_Alt{i}"
+        candidates.append(f"{base[: 16 - len(suffix)]}{suffix}")
+    for cand in candidates:
+        if RE_VALID_NICK.match(cand) and cand.lower() not in avoid:
+            return cand
+    return "NestTestAlt"
+
+
+def find_running_clients_for_dir(target_dir: str) -> list[dict]:
+    """Return running Minecraft Java processes targeting target_dir."""
+    norm_dir = os.path.normpath(os.path.abspath(target_dir))
+    ps_script = (
+        "$ErrorActionPreference='SilentlyContinue'; "
+        "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' OR Name='java.exe'\" | "
+        "ForEach-Object { if ($_.CommandLine) { [PSCustomObject]@{pid=$_.ProcessId; cmd=$_.CommandLine} } } | "
+        "ConvertTo-Json -Compress"
+    )
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    try:
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=flags,
+        )
+        raw = (res.stdout or "").strip()
+        if not raw:
+            return []
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            data = [data]
+    except Exception:
+        return []
+
+    dir_re = re.compile(r"(?:TargetDirectory=|--gameDir\s+)\"?" + re.escape(norm_dir) + r"(?=[\"\\/\s]|$)", re.IGNORECASE)
+    user_re = re.compile(r"--username\s+\"?([A-Za-z0-9_]{3,16})\"?")
+    matches: list[dict] = []
+    for proc in data:
+        cmd = str(proc.get("cmd") or "")
+        # Exact boundary check so ...\instance never matches ...\instance_alt
+        exact_re = re.compile(r"(?:TargetDirectory=|--gameDir\s+)\"?" + re.escape(norm_dir) + r"(?=[\"\s]|$)", re.IGNORECASE)
+        if exact_re.search(cmd) or (dir_re.search(cmd) and f"{norm_dir}_alt".lower() not in cmd.lower()):
+            um = user_re.search(cmd)
+            matches.append({"pid": proc.get("pid"), "username": um.group(1) if um else "Player"})
+    return matches
+
+
+def ensure_dir_junction(link_path: str, target_path: str) -> None:
+    """Create or repair an NTFS directory junction link_path -> target_path."""
+    os.makedirs(target_path, exist_ok=True)
+    os.makedirs(os.path.dirname(link_path), exist_ok=True)
+    want_real = os.path.normcase(os.path.realpath(target_path))
+    if os.path.lexists(link_path):
+        try:
+            attrs = os.stat(link_path, follow_symlinks=False).st_file_attributes
+            is_reparse = bool(attrs & 0x400)
+        except Exception:
+            is_reparse = os.path.islink(link_path)
+        if is_reparse:
+            if os.path.normcase(os.path.realpath(link_path)) == want_real:
+                return
+            os.rmdir(link_path)
+        else:
+            # Existing real folder (e.g. from older setup): replace only if safe backup/remove
+            shutil.rmtree(link_path, ignore_errors=True)
+            if os.path.lexists(link_path):
+                return
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    subprocess.run(["cmd", "/c", "mklink", "/J", link_path, target_path], check=True, capture_output=True, creationflags=flags)
+
+
+def sync_tree_mirror(src_dir: str, dst_dir: str, skip_names: set[str] | None = None) -> None:
+    """Fast incremental file mirror from src_dir to dst_dir without deleting runtime extras."""
+    if not os.path.exists(src_dir):
+        return
+    skip = {s.lower() for s in (skip_names or set())}
+    for root, _dirs, files in os.walk(src_dir):
+        rel_root = os.path.relpath(root, src_dir)
+        dst_root = dst_dir if rel_root == "." else os.path.join(dst_dir, rel_root)
+        os.makedirs(dst_root, exist_ok=True)
+        for fn in files:
+            if fn.lower() in skip:
+                continue
+            src_f = os.path.join(root, fn)
+            dst_f = os.path.join(dst_root, fn)
+            try:
+                ss = os.stat(src_f)
+                if os.path.exists(dst_f):
+                    ds = os.stat(dst_f)
+                    if ds.st_size == ss.st_size and int(ds.st_mtime) == int(ss.st_mtime):
+                        continue
+                shutil.copy2(src_f, dst_f)
+            except Exception:
+                pass
+
+
 def _pack_varint(v: int) -> bytes:
     out = bytearray()
     while (v & ~0x7F) != 0:
@@ -1286,6 +1391,7 @@ class NestLauncher:
             self._trigger_lookup(initial_nick)
         self._ping_busy = False
         self.root.after(200, self._schedule_server_ping)
+        self.root.after(350, self._check_active_client_banner)
 
     @property
     def install_root(self) -> str:
@@ -1294,6 +1400,14 @@ class NestLauncher:
     @property
     def game_dir(self) -> str:
         return os.path.join(self.install_root, "instance")
+
+    @property
+    def alt_game_dir(self) -> str:
+        return os.path.join(self.install_root, "instance_alt")
+
+    @property
+    def active_game_dir(self) -> str:
+        return self.alt_game_dir if getattr(self, "alt_client_var", None) and self.alt_client_var.get() else self.game_dir
 
     @property
     def runtime_dir(self) -> str:
@@ -1503,6 +1617,23 @@ class NestLauncher:
             style="Nest.TCombobox",
         ).pack(side="left", padx=(8, 0))
 
+        self.alt_client_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            opts,
+            text="2nd Client (Alt)",
+            variable=self.alt_client_var,
+            command=self._on_alt_toggle,
+            bg=BG,
+            fg=MUTED,
+            activebackground=BG,
+            activeforeground=TEXT,
+            selectcolor=INPUT_BG,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+            bd=0,
+            highlightthickness=0,
+        ).pack(side="left", padx=(12, 0))
+
         make_button(opts, "Check Updates", SURFACE, SURFACE_ALT, ACCENT, self._check_only, 10, 4, 8).pack(side="right")
 
         # 5. Bottom Play Button + Progress
@@ -1646,7 +1777,7 @@ class NestLauncher:
             self.acct_status.configure(text=f"Auto Nickname Skin ({nick} · {arm_txt})", fg=OK_GREEN)
             self._set_status(f"Set to automatic nickname skin ({nick}).", OK_GREEN)
 
-    def _write_client_skin_config(self) -> None:
+    def _write_client_skin_config(self, target_game_dir: str | None = None) -> None:
         mode = self.state.get("skin_mode", "mojang")
         slim = bool(self.state.get("skin_slim", False))
         b64 = self.state.get("skin_png_b64", "")
@@ -1666,10 +1797,15 @@ class NestLauncher:
             "preset_name": preset_name,
             "png_base64": b64,
         }
-        target_dirs = [os.path.join(self.game_dir, "config")]
-        cf_cfg_dir = r"C:\Users\katen\curseforge\minecraft\Instances\The Nest Vanilla Edition\config"
-        if os.path.exists(os.path.dirname(cf_cfg_dir)):
-            target_dirs.append(cf_cfg_dir)
+        if target_game_dir:
+            target_dirs = [os.path.join(target_game_dir, "config")]
+        elif getattr(self, "alt_client_var", None) and self.alt_client_var.get():
+            target_dirs = [os.path.join(self.alt_game_dir, "config")]
+        else:
+            target_dirs = [os.path.join(self.game_dir, "config")]
+            cf_cfg_dir = r"C:\Users\katen\curseforge\minecraft\Instances\The Nest Vanilla Edition\config"
+            if os.path.exists(os.path.dirname(cf_cfg_dir)):
+                target_dirs.append(cf_cfg_dir)
 
         for d in target_dirs:
             try:
@@ -1682,15 +1818,20 @@ class NestLauncher:
         self._debounce_id = None
         self._lookup_seq += 1
         seq = self._lookup_seq
-        threading.Thread(target=self._lookup_nick_worker, args=(nick, seq), daemon=True).start()
+        is_alt = bool(getattr(self, "alt_client_var", None) and self.alt_client_var.get())
+        threading.Thread(target=self._lookup_nick_worker, args=(nick, seq, is_alt), daemon=True).start()
 
-    def _lookup_nick_worker(self, nick: str, seq: int) -> None:
+    def _lookup_nick_worker(self, nick: str, seq: int, is_alt: bool = False) -> None:
         resolved_name, uid, is_official, skin_png, is_slim = fetch_mojang_skin_png(nick)
         if seq != self._lookup_seq:
             return
         self._last_looked_up = resolved_name
-        self.state["nick"] = resolved_name
-        self.state["uuid"] = uid
+        if is_alt:
+            self.state["alt_nick"] = resolved_name
+            self.state["alt_uuid"] = uid
+        else:
+            self.state["nick"] = resolved_name
+            self.state["uuid"] = uid
         self._mojang_skin_bytes = skin_png
         self._mojang_skin_slim = is_slim
 
@@ -1698,7 +1839,7 @@ class NestLauncher:
             self.state["skin_slim"] = is_slim
             self.state["skin_png_b64"] = base64.b64encode(skin_png).decode("ascii")
         save_json(STATE_PATH, self.state)
-        self._write_client_skin_config()
+        self._write_client_skin_config(self.alt_game_dir if is_alt else self.game_dir)
 
         avatar_bytes = None
         if is_official and not skin_png:
@@ -1745,8 +1886,54 @@ class NestLauncher:
         self._safe_ui(_update_ui)
 
     def _open_game_dir(self) -> None:
-        os.makedirs(self.game_dir, exist_ok=True)
-        os.startfile(self.game_dir)
+        target = self.active_game_dir
+        os.makedirs(target, exist_ok=True)
+        os.startfile(target)
+
+    def _check_active_client_banner(self) -> None:
+        def _worker() -> None:
+            running = find_running_clients_for_dir(self.game_dir)
+            if not running:
+                return
+            active_nick = running[0].get("username", "Player")
+            def _apply() -> None:
+                if not self.busy and not self.alt_client_var.get():
+                    self._set_status(f"Client active ({active_nick}) · check '2nd Client (Alt)' to open a 2nd game.", ACCENT)
+            self._safe_ui(_apply)
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_alt_toggle(self) -> None:
+        cur_nick = self.nick_var.get().strip()
+        try:
+            cur_ram = int(self.ram_var.get().split()[0])
+        except Exception:
+            cur_ram = 6
+
+        if self.alt_client_var.get():
+            if RE_VALID_NICK.match(cur_nick):
+                self.state["nick"] = cur_nick
+            self.state["ram_gb"] = cur_ram
+            alt_nick = (self.state.get("alt_nick") or "").strip()
+            if not RE_VALID_NICK.match(alt_nick) or alt_nick.lower() == self.state.get("nick", "").lower():
+                alt_nick = suggest_alt_nick(self.state.get("nick", "Nest"), {self.state.get("nick", "")})
+            self.state["alt_nick"] = alt_nick
+            alt_ram = int(self.state.get("alt_ram_gb", 4))
+            save_json(STATE_PATH, self.state)
+
+            self.nick_var.set(alt_nick)
+            self.ram_var.set(f"{alt_ram} GB")
+            self.path_lbl.configure(text=f"{self.install_root} (instance_alt)")
+            self._set_status("2nd Client (Alt) enabled · isolated folder + 4 GB safe RAM.", ACCENT)
+        else:
+            if RE_VALID_NICK.match(cur_nick):
+                self.state["alt_nick"] = cur_nick
+            self.state["alt_ram_gb"] = cur_ram
+            save_json(STATE_PATH, self.state)
+
+            self.nick_var.set(self.state.get("nick", ""))
+            self.ram_var.set(f"{int(self.state.get('ram_gb', 6))} GB")
+            self.path_lbl.configure(text=self.install_root)
+            self._set_status("Ready.", MUTED)
 
     def _check_only(self) -> None:
         if self.busy:
@@ -1761,28 +1948,124 @@ class NestLauncher:
         if not RE_VALID_NICK.match(nick):
             messagebox.showwarning("Valid Nickname Required", "Enter a valid Minecraft nickname (3–16 characters: letters, numbers, or _).")
             return
-        self.state["nick"] = nick
-        self.state["ram_gb"] = int(self.ram_var.get().split()[0])
+
+        ram_gb = int(self.ram_var.get().split()[0])
+        use_alt = bool(self.alt_client_var.get())
+        running_main = find_running_clients_for_dir(self.game_dir)
+
+        if not use_alt and running_main:
+            active_nick = running_main[0].get("username", "Player")
+            switch = messagebox.askyesno(
+                "Client Already Running",
+                f"Minecraft ({active_nick}) is already running in 'instance'.\n\n"
+                "Opening two clients in the same folder crashes Voxy (RocksDB lock).\n\n"
+                "Launch a separate 2nd Test Client in 'instance_alt' instead?",
+            )
+            if not switch:
+                return
+            self.state["nick"] = nick
+            self.state["ram_gb"] = ram_gb
+            use_alt = True
+            self.alt_client_var.set(True)
+            avoid = {p.get("username", "") for p in running_main}
+            if nick.lower() in {a.lower() for a in avoid}:
+                alt_saved = (self.state.get("alt_nick") or "").strip()
+                if RE_VALID_NICK.match(alt_saved) and alt_saved.lower() not in {a.lower() for a in avoid}:
+                    nick = alt_saved
+                else:
+                    nick = suggest_alt_nick(nick, avoid)
+                self.nick_var.set(nick)
+            if ram_gb > 4:
+                ram_gb = int(self.state.get("alt_ram_gb", 4))
+                self.ram_var.set(f"{ram_gb} GB")
+            self.path_lbl.configure(text=f"{self.install_root} (instance_alt)")
+
+        if use_alt:
+            running_alt = find_running_clients_for_dir(self.alt_game_dir)
+            if running_alt:
+                messagebox.showwarning(
+                    "2nd Client Already Running",
+                    f"A 2nd client ({running_alt[0].get('username', 'Player')}) is already running in 'instance_alt'.",
+                )
+                return
+            avoid = {p.get("username", "") for p in running_main}
+            if nick.lower() in {a.lower() for a in avoid}:
+                new_alt = suggest_alt_nick(nick, avoid)
+                ok_rename = messagebox.askyesno(
+                    "Duplicate Nickname",
+                    f"'{nick}' is already logged in on the active client.\n"
+                    "Joining the server with the same name would kick the first client.\n\n"
+                    f"Use '{new_alt}' for the 2nd client instead?",
+                )
+                if not ok_rename:
+                    return
+                nick = new_alt
+                self.nick_var.set(nick)
+            self.state["alt_nick"] = nick
+            self.state["alt_ram_gb"] = ram_gb
+        else:
+            self.state["nick"] = nick
+            self.state["ram_gb"] = ram_gb
+
         save_json(STATE_PATH, self.state)
 
         self.busy = True
         self.play_btn.configure(state="disabled", text="SYNCING...")
-        threading.Thread(target=self._sync_worker, args=(True,), daemon=True).start()
+        threading.Thread(target=self._sync_worker, args=(True, use_alt, nick, ram_gb), daemon=True).start()
 
-    def _sync_worker(self, launch_after: bool) -> None:
+    def _prepare_alt_instance(self) -> None:
+        self._set_status("Preparing isolated 2nd client (instance_alt)...", TEXT, 66)
+        os.makedirs(self.alt_game_dir, exist_ok=True)
+        for jdir in ("mods", "resourcepacks"):
+            src = os.path.join(self.game_dir, jdir)
+            if os.path.exists(src):
+                ensure_dir_junction(os.path.join(self.alt_game_dir, jdir), src)
+        for mdir in ("config", "defaultconfigs", "easy_npc", "schematics"):
+            skip = {"nest_skin_client.json"} if mdir == "config" else None
+            sync_tree_mirror(os.path.join(self.game_dir, mdir), os.path.join(self.alt_game_dir, mdir), skip_names=skip)
+        for fname in ("options.txt", "servers.dat"):
+            src_f = os.path.join(self.game_dir, fname)
+            dst_f = os.path.join(self.alt_game_dir, fname)
+            if os.path.exists(src_f) and not os.path.exists(dst_f):
+                try:
+                    shutil.copy2(src_f, dst_f)
+                except Exception:
+                    pass
+
+    def _sync_worker(
+        self,
+        launch_after: bool,
+        use_alt: bool = False,
+        launch_nick: str | None = None,
+        launch_ram_gb: int | None = None,
+    ) -> None:
         try:
-            resolved_name, uid, _ok, skin_png, is_slim = fetch_mojang_skin_png(self.state["nick"])
-            self.state["nick"], self.state["uuid"] = resolved_name, uid
+            active_nick = (launch_nick or self.state.get("alt_nick" if use_alt else "nick", "")).strip()
+            resolved_name, uid, _ok, skin_png, is_slim = fetch_mojang_skin_png(active_nick)
+            if use_alt:
+                self.state["alt_nick"], self.state["alt_uuid"] = resolved_name, uid
+            else:
+                self.state["nick"], self.state["uuid"] = resolved_name, uid
             if skin_png:
                 self._mojang_skin_bytes = skin_png
                 self._mojang_skin_slim = is_slim
             save_json(STATE_PATH, self.state)
 
             self._sync_from_github()
-            self._write_client_skin_config()
+            target_dir = self.alt_game_dir if use_alt else self.game_dir
+            if use_alt:
+                self._prepare_alt_instance()
+            self._write_client_skin_config(target_dir)
             if launch_after:
                 java_exe, install_dir = self._ensure_runtime()
-                self._launch_game(java_exe, install_dir)
+                self._launch_game(
+                    java_exe,
+                    install_dir,
+                    target_game_dir=target_dir,
+                    launch_nick=resolved_name,
+                    launch_uid=uid,
+                    requested_ram_gb=launch_ram_gb,
+                )
             else:
                 self._set_status("Modpack is up to date.", OK_GREEN, 100)
         except _SelfUpdateTriggered:
@@ -1871,38 +2154,43 @@ class NestLauncher:
         expected: dict[str, dict] = manifest.get("files", {})
         managed_dirs = manifest.get("managed_dirs", ["mods", "config", "resourcepacks", "defaultconfigs"])
 
-        for mdir in managed_dirs:
-            root_path = os.path.join(game_dir, mdir)
-            if not os.path.exists(root_path):
-                continue
-            for r, _d, fnames in os.walk(root_path):
-                for fn in fnames:
-                    full = os.path.join(r, fn)
-                    rel = os.path.relpath(full, game_dir).replace("\\", "/")
-                    if rel not in expected and mdir in ("mods", "resourcepacks") and not fn.lower().startswith("nest_txadmin"):
-                        os.remove(full)
+        try:
+            for mdir in managed_dirs:
+                root_path = os.path.join(game_dir, mdir)
+                if not os.path.exists(root_path):
+                    continue
+                for r, _d, fnames in os.walk(root_path):
+                    for fn in fnames:
+                        full = os.path.join(r, fn)
+                        rel = os.path.relpath(full, game_dir).replace("\\", "/")
+                        if rel not in expected and mdir in ("mods", "resourcepacks") and not fn.lower().startswith("nest_txadmin"):
+                            os.remove(full)
 
-        to_download: list[tuple[str, str, str]] = []
-        for rel, meta in expected.items():
-            dest = os.path.join(game_dir, rel.replace("/", os.sep))
-            want_hash = meta.get("sha256")
-            if not os.path.exists(dest) or (want_hash and sha256_file(dest) != want_hash):
-                url = meta.get("url") or f"{files_base}/{urllib.parse.quote(rel)}"
-                to_download.append((url, dest, want_hash))
+            to_download: list[tuple[str, str, str]] = []
+            for rel, meta in expected.items():
+                dest = os.path.join(game_dir, rel.replace("/", os.sep))
+                want_hash = meta.get("sha256")
+                if not os.path.exists(dest) or (want_hash and sha256_file(dest) != want_hash):
+                    url = meta.get("url") or f"{files_base}/{urllib.parse.quote(rel)}"
+                    to_download.append((url, dest, want_hash))
 
-        if not to_download:
-            self._set_status(f"Up to date (v{ver}, {len(expected)} files verified).", OK_GREEN, 65)
-            return
+            if not to_download:
+                self._set_status(f"Up to date (v{ver}, {len(expected)} files verified).", OK_GREEN, 65)
+                return
 
-        total = len(to_download)
-        done = 0
-        self._set_status(f"Downloading {total} updated file(s)...", TEXT, 15)
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            futs = [pool.submit(download_file, u, d, h) for u, d, h in to_download]
-            for fut in as_completed(futs):
-                fut.result()
-                done += 1
-                self._set_status(f"Synced {done}/{total} files...", TEXT, 15 + (done / total) * 55)
+            total = len(to_download)
+            done = 0
+            self._set_status(f"Downloading {total} updated file(s)...", TEXT, 15)
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                futs = [pool.submit(download_file, u, d, h) for u, d, h in to_download]
+                for fut in as_completed(futs):
+                    fut.result()
+                    done += 1
+                    self._set_status(f"Synced {done}/{total} files...", TEXT, 15 + (done / total) * 55)
+        except PermissionError as exc:
+            if find_running_clients_for_dir(game_dir):
+                raise RuntimeError("A modpack update is available, but Minecraft is currently running and locking mod files.\nClose the running game once to apply the update.") from exc
+            raise
 
     def _ensure_runtime(self) -> tuple[str, str]:
         java_exe = self._ensure_java25()
@@ -2006,12 +2294,23 @@ class NestLauncher:
                 for fut in as_completed([pool.submit(download_file, u, d) for u, d in lib_tasks]):
                     fut.result()
 
-    def _launch_game(self, java_exe: str, install_dir: str) -> None:
+    def _launch_game(
+        self,
+        java_exe: str,
+        install_dir: str,
+        target_game_dir: str | None = None,
+        launch_nick: str | None = None,
+        launch_uid: str | None = None,
+        requested_ram_gb: int | None = None,
+    ) -> None:
         mc_ver = self.cfg.get("mc_version", "26.3")
         nf_ver = self.cfg.get("neoforge_version", "26.3.0.103")
-        game_dir = self.game_dir
-        requested_ram_gb = int(self.state.get("ram_gb", 6))
-        ram_gb, ram_note = resolve_safe_ram_gb(requested_ram_gb)
+        game_dir = target_game_dir or self.game_dir
+        os.makedirs(game_dir, exist_ok=True)
+        nick = (launch_nick or self.state.get("nick") or "Player").strip()
+        uid = launch_uid or self.state.get("uuid") or offline_uuid_for_nick(nick)
+        req_ram = int(requested_ram_gb if requested_ram_gb is not None else self.state.get("ram_gb", 6))
+        ram_gb, ram_note = resolve_safe_ram_gb(req_ram)
         xms_mb = min(1024, ram_gb * 512)
 
         with open(os.path.join(install_dir, "versions", mc_ver, f"{mc_ver}.json"), "r", encoding="utf-8") as f:
@@ -2088,18 +2387,18 @@ class NestLauncher:
 
         asset_idx = mc_json.get("assetIndex", {}).get("id", self.cfg.get("asset_index", "34"))
         game_args = [
-            "--username", self.state["nick"],
+            "--username", nick,
             "--version", f"neoforge-{nf_ver}",
             "--gameDir", game_dir,
             "--assetsDir", os.path.join(install_dir, "assets"),
             "--assetIndex", asset_idx,
-            "--uuid", self.state["uuid"] or offline_uuid_for_nick(self.state["nick"]),
+            "--uuid", uid or offline_uuid_for_nick(nick),
             "--accessToken", "0",
             "--userType", "msa",
             "--versionType", "release",
         ] + [str(x) for x in nf_json.get("arguments", {}).get("game", []) if isinstance(x, str)]
 
-        status_msg = f"Launching as {self.state['nick']} ({ram_gb} GB)..."
+        status_msg = f"Launching as {nick} ({ram_gb} GB)..."
         if ram_note:
             status_msg = f"{ram_note} · Launching..."
         self._set_status(status_msg, OK_GREEN, 100)
