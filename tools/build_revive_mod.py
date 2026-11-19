@@ -242,6 +242,8 @@ public final class ReviveServerManager {
 
     private static final Identifier NO_STEP_MOD_ID = Identifier.fromNamespaceAndPath(NestReviveMod.MODID, "no_step_up");
     private static final AttributeModifier NO_STEP_MOD = new AttributeModifier(NO_STEP_MOD_ID, -1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
+    private static final Identifier CARRY_SLOW_MOD_ID = Identifier.fromNamespaceAndPath(NestReviveMod.MODID, "carry_slow");
+    private static final AttributeModifier CARRY_SLOW_MOD = new AttributeModifier(CARRY_SLOW_MOD_ID, -0.45, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
 
     private static final class DownedEntry {
         final UUID playerId;
@@ -353,6 +355,19 @@ public final class ReviveServerManager {
             }
         } else {
             attr.removeModifier(NO_STEP_MOD_ID);
+        }
+    }
+
+    private static void setCarrySlow(ServerPlayer sp, boolean enabled) {
+        if (sp == null) return;
+        AttributeInstance attr = sp.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (attr == null) return;
+        if (enabled) {
+            if (!attr.hasModifier(CARRY_SLOW_MOD_ID)) {
+                attr.addTransientModifier(CARRY_SLOW_MOD);
+            }
+        } else {
+            attr.removeModifier(CARRY_SLOW_MOD_ID);
         }
     }
 
@@ -514,6 +529,7 @@ public final class ReviveServerManager {
             ServerPlayer dragger = srv.getPlayerList().getPlayer(draggerId);
             if (dragger != null) {
                 setNoStepUp(dragger, false);
+                setCarrySlow(dragger, false);
                 dragger.removeEffect(MobEffects.SLOWNESS);
             }
         }
@@ -568,8 +584,10 @@ public final class ReviveServerManager {
                 held.draggerName = "";
                 held.holdMode = MODE_NONE;
                 setNoStepUp(sp, false);
+                setCarrySlow(sp, false);
                 sp.removeEffect(MobEffects.SLOWNESS);
                 if (victim != null) {
+                    victim.noPhysics = false;
                     victim.setNoGravity(false);
                     double dropX = sp.getX() + lx * 1.0;
                     double dropZ = sp.getZ() + lz * 1.0;
@@ -595,7 +613,14 @@ public final class ReviveServerManager {
                     targetEntry.reviveTicks = 0;
                     targetEntry.activeReviverName = "";
                     setNoStepUp(sp, false); // Carrier can climb blocks and look around!
+                    setCarrySlow(sp, true);
+                    sp.setSprinting(false);
                     sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, true, false, false)); // Slowness III
+                    ServerPlayer victim = srv.getPlayerList().getPlayer(targetEntry.playerId);
+                    if (victim != null) {
+                        victim.noPhysics = true;
+                        victim.setNoGravity(true);
+                    }
                     sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.9F, 1.15F);
                     changed = true;
                 }
@@ -633,8 +658,10 @@ public final class ReviveServerManager {
             held.throwProtectTicks = 25;
 
             setNoStepUp(sp, false);
+            setCarrySlow(sp, false);
             sp.removeEffect(MobEffects.SLOWNESS);
             if (victim != null) {
+                victim.noPhysics = false;
                 victim.setNoGravity(false);
                 victim.setPos(startX, startY, startZ);
                 victim.setDeltaMovement(vx, vy, vz);
@@ -650,9 +677,13 @@ public final class ReviveServerManager {
                 held.draggerName = "";
                 held.holdMode = MODE_NONE;
                 setNoStepUp(sp, false);
+                setCarrySlow(sp, false);
                 sp.removeEffect(MobEffects.SLOWNESS);
                 ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
-                if (victim != null) victim.setNoGravity(false);
+                if (victim != null) {
+                    victim.noPhysics = false;
+                    victim.setNoGravity(false);
+                }
                 sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.7F, 0.8F);
                 changed = true;
             } else {
@@ -666,11 +697,13 @@ public final class ReviveServerManager {
                     targetEntry.reviveTicks = 0;
                     targetEntry.activeReviverName = "";
                     if (victim != null) {
+                        victim.noPhysics = false;
                         targetEntry.dragX = victim.getX();
                         targetEntry.dragY = victim.getY();
                         targetEntry.dragZ = victim.getZ();
                     }
                     setNoStepUp(sp, true);
+                    setCarrySlow(sp, false);
                     sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 1, true, false, false)); // Heavy drag slowness
                     sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.85F, 1.05F);
                     changed = true;
@@ -712,6 +745,8 @@ public final class ReviveServerManager {
         if (event.getEntity() instanceof ServerPlayer sp) {
             if (!DOWNED.containsKey(sp.getUUID()) && findHeldBy(sp.getUUID()) == null) {
                 setNoStepUp(sp, false);
+                setCarrySlow(sp, false);
+                sp.noPhysics = false;
                 sp.setNoGravity(false);
             }
             syncToPlayer(sp, sp.level().getServer());
@@ -724,6 +759,8 @@ public final class ReviveServerManager {
             GIVEUP_HOLDING.remove(id);
             releaseAnyDraggedBy(sp.level().getServer(), id);
             setNoStepUp(sp, false);
+            setCarrySlow(sp, false);
+            sp.noPhysics = false;
             sp.setNoGravity(false);
             if (DOWNED.containsKey(id)) {
                 finishBleedout(sp);
@@ -738,6 +775,7 @@ public final class ReviveServerManager {
                 ServerPlayer dragger = sp.level().getServer().getPlayerList().getPlayer(removed.draggerId);
                 if (dragger != null) {
                     setNoStepUp(dragger, false);
+                    setCarrySlow(dragger, false);
                     dragger.removeEffect(MobEffects.SLOWNESS);
                 }
             }
@@ -747,6 +785,8 @@ public final class ReviveServerManager {
         }
         GIVEUP_HOLDING.remove(sp.getUUID());
         setNoStepUp(sp, false);
+        setCarrySlow(sp, false);
+        sp.noPhysics = false;
         sp.setNoGravity(false);
         sp.setForcedPose(null);
         sp.removeEffect(MobEffects.SLOWNESS);
@@ -845,16 +885,20 @@ public final class ReviveServerManager {
                 if (!validDragger) {
                     if (dragger != null) {
                         setNoStepUp(dragger, false);
+                        setCarrySlow(dragger, false);
                         dragger.removeEffect(MobEffects.SLOWNESS);
                     }
                     entry.draggerId = null;
                     entry.draggerName = "";
                     entry.holdMode = MODE_NONE;
+                    victim.noPhysics = false;
                     victim.setNoGravity(false);
                     dirty = true;
                 } else if (entry.holdMode == MODE_CARRY) {
-                    // Carry on shoulders with Slowness III + free camera + normal step height
+                    // Carry on shoulders with Slowness III + free camera + normal step height + no collision push
                     setNoStepUp(dragger, false);
+                    setCarrySlow(dragger, true);
+                    dragger.setSprinting(false);
                     dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 2, true, false, false));
                     Vec3 look = dragger.getLookAngle();
                     double lx = look.x, lz = look.z;
@@ -866,6 +910,7 @@ public final class ReviveServerManager {
                     entry.dragX = sx;
                     entry.dragY = sy;
                     entry.dragZ = sz;
+                    victim.noPhysics = true;
                     victim.setNoGravity(true);
                     victim.setPos(sx, sy, sz);
                     victim.setDeltaMovement(Vec3.ZERO);
@@ -874,7 +919,10 @@ public final class ReviveServerManager {
                 } else {
                     // Ground drag: neither dragger nor victim can climb blocks; heavy drag slowness
                     setNoStepUp(dragger, true);
+                    setCarrySlow(dragger, false);
+                    dragger.setSprinting(false);
                     dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 1, true, false, false));
+                    victim.noPhysics = false;
                     victim.setNoGravity(false);
                     double dx = victim.getX() - dragger.getX();
                     double dz = victim.getZ() - dragger.getZ();
@@ -1070,29 +1118,39 @@ public final class ReviveServerManager {
 
 FILES["com/thenest/revive/client/ReviveClient.java"] = r"""package com.thenest.revive.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import com.thenest.revive.ReviveHoldPayload;
 import com.thenest.revive.SyncDownedPayload;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderPlayerEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.NeoForge;
+import org.joml.Vector3f;
 
 public final class ReviveClient {
     public static final int MODE_NONE = 0;
@@ -1132,12 +1190,15 @@ public final class ReviveClient {
     private static volatile boolean dragLockActive = false;
     private static volatile float dragLockYaw = 0.0F;
     private static volatile float dragLockPitch = 0.0F;
+    private static final Set<Integer> FLIPPED_RENDER_IDS = ConcurrentHashMap.newKeySet();
 
     private ReviveClient() {}
 
     public static void init() {
         SyncDownedPayload.setClientHandler(ReviveClient::onSync);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderFramePre);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPre);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPost);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTickPre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onScreenOpening);
@@ -1154,6 +1215,7 @@ public final class ReviveClient {
         localGiveUpTicks = 0;
         lastThrowSeq = -1;
         dragLockActive = false;
+        FLIPPED_RENDER_IDS.clear();
     }
 
     private static void onSync(String encoded) {
@@ -1269,6 +1331,39 @@ public final class ReviveClient {
         }
     }
 
+    private static void onRenderPlayerPre(RenderPlayerEvent.Pre<?> event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || DOWNED_LIST.isEmpty()) return;
+        int entityId = event.getRenderState().id;
+        Entity ent = mc.level.getEntity(entityId);
+        if (ent == null) return;
+        String uid = ent.getUUID().toString();
+        for (DownedView v : DOWNED_LIST) {
+            if (uid.equals(v.uuid()) && v.holdMode() == MODE_DRAG) {
+                PoseStack ps = event.getPoseStack();
+                ps.pushPose();
+                double rad = Math.toRadians(event.getRenderState().bodyRot);
+                Vector3f spineAxis = new Vector3f((float) (-Math.sin(rad)), 0.0F, (float) Math.cos(rad));
+                if (spineAxis.lengthSquared() < 1e-4F) {
+                    spineAxis.set(0.0F, 0.0F, 1.0F);
+                } else {
+                    spineAxis.normalize();
+                }
+                ps.translate(0.0F, 0.28F, 0.0F);
+                ps.rotateDegrees(Axis.of(spineAxis), 180.0F);
+                ps.translate(0.0F, -0.28F, 0.0F);
+                FLIPPED_RENDER_IDS.add(entityId);
+                return;
+            }
+        }
+    }
+
+    private static void onRenderPlayerPost(RenderPlayerEvent.Post<?> event) {
+        if (FLIPPED_RENDER_IDS.remove(event.getRenderState().id)) {
+            event.getPoseStack().popPose();
+        }
+    }
+
     private static void onScreenOpening(ScreenEvent.Opening event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && findSelf(mc.player) != null) {
@@ -1284,20 +1379,26 @@ public final class ReviveClient {
         LocalPlayer me = mc.player;
         if (me == null || mc.getConnection() == null) return;
 
-        // Visually anchor any remotely carried downed player onto their carrier's shoulders
-        if (mc.level != null && !DOWNED_LIST.isEmpty()) {
+        // Visually anchor carried players & prevent entity pushing against carrier
+        if (mc.level != null) {
             String myId = me.getUUID().toString();
-            for (DownedView v : DOWNED_LIST) {
-                if (myId.equals(v.uuid())) continue;
-                if (v.holdMode() == MODE_CARRY) {
-                    for (Player rp : mc.level.players()) {
-                        if (rp != me && rp.getUUID().toString().equals(v.uuid())) {
-                            rp.setPos(v.dragX(), v.dragY(), v.dragZ());
-                            rp.setDeltaMovement(0.0, 0.0, 0.0);
-                            rp.setForcedPose(Pose.SWIMMING);
-                            break;
-                        }
+            for (Player rp : mc.level.players()) {
+                if (rp == me) continue;
+                String rpId = rp.getUUID().toString();
+                DownedView carriedView = null;
+                for (DownedView v : DOWNED_LIST) {
+                    if (rpId.equals(v.uuid()) && v.holdMode() == MODE_CARRY) {
+                        carriedView = v;
+                        break;
                     }
+                }
+                if (carriedView != null) {
+                    rp.noPhysics = true;
+                    rp.setPos(carriedView.dragX(), carriedView.dragY(), carriedView.dragZ());
+                    rp.setDeltaMovement(0.0, 0.0, 0.0);
+                    rp.setForcedPose(Pose.SWIMMING);
+                } else if (rp.noPhysics && !rp.isSpectator()) {
+                    rp.noPhysics = false;
                 }
             }
         }
@@ -1315,6 +1416,7 @@ public final class ReviveClient {
             if (self.throwSeq() > 0 && self.throwSeq() != lastThrowSeq) {
                 lastThrowSeq = self.throwSeq();
                 wasSelfCarried = false;
+                me.noPhysics = false;
                 me.setNoGravity(false);
                 me.setPos(self.dragX(), self.dragY(), self.dragZ());
                 me.setDeltaMovement(self.throwVx(), self.throwVy(), self.throwVz());
@@ -1327,6 +1429,7 @@ public final class ReviveClient {
 
             if (self.holdMode() == MODE_CARRY) {
                 wasSelfCarried = true;
+                me.noPhysics = true;
                 me.setNoGravity(true);
                 me.setPos(self.dragX(), self.dragY(), self.dragZ());
                 me.setDeltaMovement(0.0, 0.0, 0.0);
@@ -1334,6 +1437,7 @@ public final class ReviveClient {
             } else {
                 if (wasSelfCarried) {
                     wasSelfCarried = false;
+                    me.noPhysics = false;
                     me.setNoGravity(false);
                 }
                 // Ground drag glide: flat XZ pull only (cannot go up blocks!)
@@ -1355,6 +1459,7 @@ public final class ReviveClient {
 
         if (wasSelfCarried) {
             wasSelfCarried = false;
+            me.noPhysics = false;
             me.setNoGravity(false);
         }
 
@@ -1413,6 +1518,7 @@ public final class ReviveClient {
             wasSelfDowned = false;
             wasSelfCarried = false;
             lastThrowSeq = -1;
+            me.noPhysics = false;
             me.setNoGravity(false);
             me.setForcedPose(null);
         } else {
@@ -1449,11 +1555,11 @@ public final class ReviveClient {
             return;
         }
         DownedView held = findHeldTarget(me);
-        if (held != null && held.holdMode() == MODE_DRAG) {
-            // Dragger cannot sprint or jump while dragging on ground
+        if (held != null && (held.holdMode() == MODE_DRAG || held.holdMode() == MODE_CARRY)) {
             ClientInput ci = event.getInput();
             Input k = ci.keyPresses;
-            ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), false, k.shift(), false);
+            boolean allowJump = (held.holdMode() == MODE_CARRY) && k.jump();
+            ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), allowJump, k.shift(), false);
             me.setSprinting(false);
         }
     }
@@ -1608,6 +1714,11 @@ public final class ReviveClient {
             }
         }
 
+        if (self == null) {
+            float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(true);
+            renderFloatingTimerCircles(mc, me, g, sw, sh, list, partialTick);
+        }
+
         String myDim = me.level().dimension().identifier().toString();
         int ay = 10;
         for (DownedView v : list) {
@@ -1616,7 +1727,7 @@ public final class ReviveClient {
             double dy = v.y() - me.getY();
             double dz = v.z() - me.getZ();
             int dist = (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
-            String secs = String.format(Locale.ROOT, "%.0fs", Math.max(0, v.bleedTicks()) / 20.0);
+            String secs = formatCountdown(v.bleedTicks());
             String alert = "! " + v.name() + " DOWN · " + dist + "m · " + secs;
             int aw = mc.font.width(alert) + 14;
             int ax = sw - aw - 8;
@@ -1624,6 +1735,100 @@ public final class ReviveClient {
             g.fill(ax, ay, ax + 2, ay + 16, 0xFFE84848);
             g.text(mc.font, alert, ax + 7, ay + 4, 0xFFF5ECE0, false);
             ay += 19;
+        }
+    }
+
+    private static String formatCountdown(int ticks) {
+        int sec = Math.max(0, (int) Math.ceil(ticks / 20.0));
+        if (sec >= 60) {
+            return (sec / 60) + ":" + String.format(Locale.ROOT, "%02d", sec % 60);
+        }
+        return sec + "s";
+    }
+
+    private static void renderFloatingTimerCircles(
+            Minecraft mc, LocalPlayer me, GuiGraphicsExtractor g, int sw, int sh, List<DownedView> list, float partialTick
+    ) {
+        if (mc.level == null) return;
+        Camera cam = mc.gameRenderer.mainCamera();
+        Vec3 camPos = cam.position();
+        Vec3 camFwd = new Vec3(cam.forwardVector());
+        String myId = me.getUUID().toString();
+        String myDim = me.level().dimension().identifier().toString();
+        Font font = mc.font;
+
+        for (DownedView v : list) {
+            if (myId.equals(v.uuid()) || !myDim.equals(v.dimension())) continue;
+
+            Player rp = null;
+            for (Player p : mc.level.players()) {
+                if (p.getUUID().toString().equals(v.uuid())) {
+                    rp = p;
+                    break;
+                }
+            }
+            Vec3 basePos = (rp != null) ? rp.getPosition(partialTick) : new Vec3(v.x(), v.y(), v.z());
+            Vec3 anchor = basePos.add(0.0, 1.05, 0.0);
+
+            Vec3 diff = anchor.subtract(camPos);
+            double dist = diff.length();
+            if (dist < 1.1 || dist > 48.0) continue;
+            if (diff.dot(camFwd) <= 0.2) continue;
+
+            Vec3 ndc = mc.gameRenderer.projectPointToScreen(anchor);
+            if (ndc.z >= 1.0) continue;
+
+            int cx = (int) Math.round((ndc.x * 0.5 + 0.5) * sw);
+            int cy = (int) Math.round((-ndc.y * 0.5 + 0.5) * sh);
+            if (cx < -24 || cx > sw + 24 || cy < -24 || cy > sh + 24) continue;
+
+            boolean reviving = v.reviveTicks() > 0 && !v.reviverName().isEmpty();
+            boolean held = !reviving && v.holdMode() != MODE_NONE;
+            double ratio = reviving
+                    ? (v.reviveTicks() / (double) v.maxReviveTicks())
+                    : (v.bleedTicks() / (double) v.maxBleedTicks());
+            ratio = Math.max(0.0, Math.min(1.0, ratio));
+
+            int ringCol = reviving ? 0xFF4ADE80 : (held ? 0xFF38BDF8 : (v.bleedTicks() <= 400 ? 0xFFFF5A5A : 0xFFE86A58));
+            int pct = (int) Math.round(ratio * 100.0);
+            String pctTxt = pct + "%";
+            String timeTxt = formatCountdown(v.bleedTicks());
+
+            // Cute minimalist circular backdrop (radius 13px)
+            int bgRadius = 13;
+            for (int dy = -bgRadius; dy <= bgRadius; dy++) {
+                int dx = (int) Math.floor(Math.sqrt(bgRadius * bgRadius - dy * dy));
+                g.fill(cx - dx, cy + dy, cx + dx + 1, cy + dy + 1, 0xCC130E0B);
+            }
+
+            // Track ring & smooth filled percentage arc (starting at 12 o'clock clockwise)
+            int steps = 72;
+            int filledSteps = (int) Math.round(steps * ratio);
+            double ringR = 11.5;
+            for (int i = 0; i < steps; i++) {
+                double ang = -Math.PI / 2.0 + (2.0 * Math.PI * i) / steps;
+                int px = (int) Math.round(cx + Math.cos(ang) * ringR);
+                int py = (int) Math.round(cy + Math.sin(ang) * ringR);
+                int col = (i < filledSteps) ? ringCol : 0xFF2B2018;
+                g.fill(px - 1, py - 1, px + 1, py + 1, col);
+            }
+
+            // Centered percentage number inside circle
+            g.pose().pushMatrix();
+            g.pose().translate((float) cx, (float) (cy - 2.3));
+            g.pose().scale(0.62F, 0.62F);
+            int pw = font.width(pctTxt);
+            g.text(font, pctTxt, -pw / 2, 0, 0xFFF5ECE0, false);
+            g.pose().popMatrix();
+
+            // Minimalist countdown time pill cleanly below the circle
+            g.pose().pushMatrix();
+            g.pose().translate((float) cx, (float) (cy + 16.0));
+            g.pose().scale(0.74F, 0.74F);
+            int tw = font.width(timeTxt);
+            g.fill(-tw / 2 - 4, -2, tw / 2 + 4, 10, 0xCC130E0B);
+            g.text(font, timeTxt, -tw / 2, 0, ringCol, false);
+            g.pose().popMatrix();
         }
     }
 }
