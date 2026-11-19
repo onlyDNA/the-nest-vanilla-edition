@@ -904,9 +904,15 @@ public final class ReviveServerManager {
                     double lx = look.x, lz = look.z;
                     double ll = Math.hypot(lx, lz);
                     if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
-                    double sx = dragger.getX() - lx * 0.35;
-                    double sy = dragger.getY() + 1.38;
-                    double sz = dragger.getZ() - lz * 0.35;
+                    double sx = dragger.getX() - lx * 0.66;
+                    double sy = dragger.getY() + 1.40;
+                    double sz = dragger.getZ() - lz * 0.66;
+                    BlockPos behindPos = BlockPos.containing(sx, sy + 0.25, sz);
+                    if (dragger.level().getBlockState(behindPos).isSolid()) {
+                        sx = dragger.getX();
+                        sy = dragger.getY() + 1.84;
+                        sz = dragger.getZ();
+                    }
                     entry.dragX = sx;
                     entry.dragY = sy;
                     entry.dragZ = sz;
@@ -1768,11 +1774,11 @@ public final class ReviveClient {
                 }
             }
             Vec3 basePos = (rp != null) ? rp.getPosition(partialTick) : new Vec3(v.x(), v.y(), v.z());
-            Vec3 anchor = basePos.add(0.0, 1.05, 0.0);
+            Vec3 anchor = basePos.add(0.0, 0.85, 0.0);
 
             Vec3 diff = anchor.subtract(camPos);
             double dist = diff.length();
-            if (dist < 1.1 || dist > 48.0) continue;
+            if (dist < 1.1 || dist > 64.0) continue;
             if (diff.dot(camFwd) <= 0.2) continue;
 
             Vec3 ndc = mc.gameRenderer.projectPointToScreen(anchor);
@@ -1789,45 +1795,51 @@ public final class ReviveClient {
                     : (v.bleedTicks() / (double) v.maxBleedTicks());
             ratio = Math.max(0.0, Math.min(1.0, ratio));
 
+            float distScale = (float) Math.max(0.32, Math.min(1.0, 7.5 / Math.max(4.0, dist)));
             int ringCol = reviving ? 0xFF4ADE80 : (held ? 0xFF38BDF8 : (v.bleedTicks() <= 400 ? 0xFFFF5A5A : 0xFFE86A58));
             int pct = (int) Math.round(ratio * 100.0);
             String pctTxt = pct + "%";
             String timeTxt = formatCountdown(v.bleedTicks());
 
-            // Cute minimalist circular backdrop (radius 13px)
-            int bgRadius = 13;
+            g.pose().pushMatrix();
+            g.pose().translate((float) cx, (float) cy);
+            g.pose().scale(distScale, distScale);
+
+            // Subtle frosted circle backdrop (radius 12px)
+            int bgRadius = 12;
             for (int dy = -bgRadius; dy <= bgRadius; dy++) {
                 int dx = (int) Math.floor(Math.sqrt(bgRadius * bgRadius - dy * dy));
-                g.fill(cx - dx, cy + dy, cx + dx + 1, cy + dy + 1, 0xCC130E0B);
+                g.fill(-dx, dy, dx + 1, dy + 1, 0x88110D0A);
             }
 
-            // Track ring & smooth filled percentage arc (starting at 12 o'clock clockwise)
-            int steps = 72;
+            // Crisp 1px-thin smooth radial percentage ring (120 steps)
+            int steps = 120;
             int filledSteps = (int) Math.round(steps * ratio);
-            double ringR = 11.5;
+            double ringR = 11.2;
             for (int i = 0; i < steps; i++) {
                 double ang = -Math.PI / 2.0 + (2.0 * Math.PI * i) / steps;
-                int px = (int) Math.round(cx + Math.cos(ang) * ringR);
-                int py = (int) Math.round(cy + Math.sin(ang) * ringR);
-                int col = (i < filledSteps) ? ringCol : 0xFF2B2018;
-                g.fill(px - 1, py - 1, px + 1, py + 1, col);
+                int px = (int) Math.round(Math.cos(ang) * ringR);
+                int py = (int) Math.round(Math.sin(ang) * ringR);
+                int col = (i < filledSteps) ? ringCol : 0x663B2D21;
+                g.fill(px, py, px + 1, py + 1, col);
             }
 
             // Centered percentage number inside circle
             g.pose().pushMatrix();
-            g.pose().translate((float) cx, (float) (cy - 2.3));
-            g.pose().scale(0.62F, 0.62F);
+            g.pose().translate(0.0F, -2.5F);
+            g.pose().scale(0.65F, 0.65F);
             int pw = font.width(pctTxt);
-            g.text(font, pctTxt, -pw / 2, 0, 0xFFF5ECE0, false);
+            g.text(font, pctTxt, -pw / 2, 0, 0xFFF5ECE0, true);
             g.pose().popMatrix();
 
-            // Minimalist countdown time pill cleanly below the circle
+            // Clean shadowed countdown time directly under circle
             g.pose().pushMatrix();
-            g.pose().translate((float) cx, (float) (cy + 16.0));
+            g.pose().translate(0.0F, 14.5F);
             g.pose().scale(0.74F, 0.74F);
             int tw = font.width(timeTxt);
-            g.fill(-tw / 2 - 4, -2, tw / 2 + 4, 10, 0xCC130E0B);
-            g.text(font, timeTxt, -tw / 2, 0, ringCol, false);
+            g.text(font, timeTxt, -tw / 2, 0, ringCol, true);
+            g.pose().popMatrix();
+
             g.pose().popMatrix();
         }
     }
