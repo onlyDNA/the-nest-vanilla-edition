@@ -25,4 +25,5 @@ build/
 dist/
 release/*
 !release/The Nest Launcher.exe
+!release/The Nest Alt Launcher.exe
 *.spec
