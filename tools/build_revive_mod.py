@@ -142,7 +142,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
-public record ReviveHoldPayload(boolean useHeld, boolean giveUpHeld) implements CustomPacketPayload {
+public record ReviveHoldPayload(boolean dragPressed, boolean carryPressed, boolean throwPressed, boolean giveUpHeld) implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<ReviveHoldPayload> TYPE =
             new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(NestReviveMod.MODID, "revive_hold"));
@@ -151,12 +151,14 @@ public record ReviveHoldPayload(boolean useHeld, boolean giveUpHeld) implements 
             StreamCodec.of(ReviveHoldPayload::encode, ReviveHoldPayload::decode);
 
     private static void encode(RegistryFriendlyByteBuf buf, ReviveHoldPayload p) {
-        buf.writeBoolean(p.useHeld());
+        buf.writeBoolean(p.dragPressed());
+        buf.writeBoolean(p.carryPressed());
+        buf.writeBoolean(p.throwPressed());
         buf.writeBoolean(p.giveUpHeld());
     }
 
     private static ReviveHoldPayload decode(RegistryFriendlyByteBuf buf) {
-        return new ReviveHoldPayload(buf.readBoolean(), buf.readBoolean());
+        return new ReviveHoldPayload(buf.readBoolean(), buf.readBoolean(), buf.readBoolean(), buf.readBoolean());
     }
 
     @Override
@@ -171,7 +173,7 @@ public record ReviveHoldPayload(boolean useHeld, boolean giveUpHeld) implements 
     private static void handleServer(ReviveHoldPayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (ctx.player() instanceof ServerPlayer sp) {
-                ReviveServerManager.setHoldFlags(sp.getUUID(), payload.useHeld(), payload.giveUpHeld());
+                ReviveServerManager.handleClientInput(sp, payload.dragPressed(), payload.carryPressed(), payload.throwPressed(), payload.giveUpHeld());
             }
         });
     }
@@ -195,8 +197,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -211,6 +215,9 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
@@ -220,6 +227,7 @@ import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
+import net.neoforged.neoforge.event.entity.living.LivingSwapItemsEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -228,6 +236,13 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class ReviveServerManager {
+    public static final int MODE_NONE = 0;
+    public static final int MODE_DRAG = 1;
+    public static final int MODE_CARRY = 2;
+
+    private static final Identifier NO_STEP_MOD_ID = Identifier.fromNamespaceAndPath(NestReviveMod.MODID, "no_step_up");
+    private static final AttributeModifier NO_STEP_MOD = new AttributeModifier(NO_STEP_MOD_ID, -1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
+
     private static final class DownedEntry {
         final UUID playerId;
         final String playerName;
@@ -241,9 +256,15 @@ public final class ReviveServerManager {
         String activeReviverName = "";
         UUID draggerId = null;
         String draggerName = "";
+        int holdMode = MODE_NONE;
         double dragX = 0.0;
         double dragY = 0.0;
         double dragZ = 0.0;
+        int throwSeq = 0;
+        double throwVx = 0.0;
+        double throwVy = 0.0;
+        double throwVz = 0.0;
+        int throwProtectTicks = 0;
 
         DownedEntry(UUID playerId, String playerName, DamageSource fatalSource, int maxBleedoutTicks, int maxReviveTicks, int graceTicks) {
             this.playerId = playerId;
@@ -260,10 +281,9 @@ public final class ReviveServerManager {
 
     private static final Map<UUID, DownedEntry> DOWNED = new ConcurrentHashMap<>();
     private static final Set<UUID> BYPASS_DEATH = ConcurrentHashMap.newKeySet();
-    private static final Set<UUID> USE_HOLDING = ConcurrentHashMap.newKeySet();
     private static final Set<UUID> GIVEUP_HOLDING = ConcurrentHashMap.newKeySet();
 
-    private static volatile int cfgBleedoutTicks = 45 * 20;
+    private static volatile int cfgBleedoutTicks = 120 * 20;
     private static volatile int cfgReviveTicks = 70;
     private static volatile double cfgReviveRange = 3.2;
     private static volatile int cfgGraceTicks = 30;
@@ -284,6 +304,7 @@ public final class ReviveServerManager {
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickItem);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onEntityInteract);
+        NeoForge.EVENT_BUS.addListener(ReviveServerManager::onSwapItems);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onContainerOpen);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onItemToss);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onPlayerJoin);
@@ -300,7 +321,7 @@ public final class ReviveServerManager {
             if (!Files.exists(p)) {
                 Files.createDirectories(p.getParent());
                 String def = "# The Nest Revive Configuration\n"
-                        + "bleedout_seconds=45\n"
+                        + "bleedout_seconds=120\n"
                         + "revive_seconds=3.5\n"
                         + "revive_range=3.2\n"
                         + "post_down_grace_seconds=1.5\n"
@@ -312,7 +333,7 @@ public final class ReviveServerManager {
                 try (var in = Files.newInputStream(p)) {
                     props.load(in);
                 }
-                cfgBleedoutTicks = Math.max(100, (int) Math.round(Double.parseDouble(props.getProperty("bleedout_seconds", "45")) * 20.0));
+                cfgBleedoutTicks = Math.max(100, (int) Math.round(Double.parseDouble(props.getProperty("bleedout_seconds", "120")) * 20.0));
                 cfgReviveTicks = Math.max(20, (int) Math.round(Double.parseDouble(props.getProperty("revive_seconds", "3.5")) * 20.0));
                 cfgReviveRange = Math.max(1.8, Double.parseDouble(props.getProperty("revive_range", "3.2")));
                 cfgGraceTicks = Math.max(10, (int) Math.round(Double.parseDouble(props.getProperty("post_down_grace_seconds", "1.5")) * 20.0));
@@ -322,11 +343,17 @@ public final class ReviveServerManager {
         } catch (Exception ignored) {}
     }
 
-    public static void setHoldFlags(UUID uuid, boolean useHeld, boolean giveUpHeld) {
-        if (useHeld) USE_HOLDING.add(uuid);
-        else USE_HOLDING.remove(uuid);
-        if (giveUpHeld) GIVEUP_HOLDING.add(uuid);
-        else GIVEUP_HOLDING.remove(uuid);
+    private static void setNoStepUp(ServerPlayer sp, boolean enabled) {
+        if (sp == null) return;
+        AttributeInstance attr = sp.getAttribute(Attributes.STEP_HEIGHT);
+        if (attr == null) return;
+        if (enabled) {
+            if (!attr.hasModifier(NO_STEP_MOD_ID)) {
+                attr.addTransientModifier(NO_STEP_MOD);
+            }
+        } else {
+            attr.removeModifier(NO_STEP_MOD_ID);
+        }
     }
 
     public static boolean isDowned(UUID uuid) {
@@ -372,8 +399,10 @@ public final class ReviveServerManager {
         sp.clearFire();
         sp.setAirSupply(sp.getMaxAirSupply());
         sp.stopRiding();
+        sp.setNoGravity(false);
         sp.closeContainer();
-        releaseAnyDraggedBy(sp.getUUID());
+        releaseAnyDraggedBy(srv, sp.getUUID());
+        setNoStepUp(sp, true);
         sp.setSprinting(false);
         sp.setForcedPose(Pose.SWIMMING);
         sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, cfgBleedoutTicks + 200, 3, true, false, false));
@@ -404,7 +433,7 @@ public final class ReviveServerManager {
         }
 
         String displayName = sp.getDisplayName().getString();
-        Component msg = Component.literal("§c[The Nest] §e" + displayName + " §cis wounded on the ground! Hold §6[Shift] §cto revive or §6[Right-Click] §cbody to drag (§e"
+        Component msg = Component.literal("§c[The Nest] §e" + displayName + " §cis wounded on the ground! Hold §6[Shift] §cto revive, §6[F] §cto drag, or §6[Shift+F] §cto carry (§e"
                 + (cfgBleedoutTicks / 20) + "s§c)!");
         for (ServerPlayer other : srv.getPlayerList().getPlayers()) {
             other.sendSystemMessage(msg);
@@ -466,47 +495,204 @@ public final class ReviveServerManager {
         }
     }
 
-    private static void releaseAnyDraggedBy(UUID draggerId) {
+    private static void releaseAnyDraggedBy(MinecraftServer srv, UUID draggerId) {
+        if (draggerId == null) return;
         for (DownedEntry e : DOWNED.values()) {
             if (draggerId.equals(e.draggerId)) {
                 e.draggerId = null;
                 e.draggerName = "";
+                e.holdMode = MODE_NONE;
+                if (srv != null) {
+                    ServerPlayer vic = srv.getPlayerList().getPlayer(e.playerId);
+                    if (vic != null) {
+                        vic.setNoGravity(false);
+                    }
+                }
             }
+        }
+        if (srv != null) {
+            ServerPlayer dragger = srv.getPlayerList().getPlayer(draggerId);
+            if (dragger != null) {
+                setNoStepUp(dragger, false);
+                dragger.removeEffect(MobEffects.SLOWNESS);
+            }
+        }
+    }
+
+    private static DownedEntry findHeldBy(UUID draggerId) {
+        if (draggerId == null) return null;
+        for (DownedEntry e : DOWNED.values()) {
+            if (draggerId.equals(e.draggerId)) return e;
+        }
+        return null;
+    }
+
+    private static DownedEntry findNearestDowned(ServerPlayer actor, double maxRange) {
+        double bestSq = maxRange * maxRange;
+        DownedEntry best = null;
+        for (DownedEntry e : DOWNED.values()) {
+            if (e.playerId.equals(actor.getUUID())) continue;
+            ServerPlayer target = actor.level().getServer().getPlayerList().getPlayer(e.playerId);
+            if (target == null || target.level() != actor.level()) continue;
+            double dSq = actor.distanceToSqr(target);
+            if (dSq <= bestSq) {
+                bestSq = dSq;
+                best = e;
+            }
+        }
+        return best;
+    }
+
+    public static void handleClientInput(ServerPlayer sp, boolean dragPressed, boolean carryPressed, boolean throwPressed, boolean giveUpHeld) {
+        UUID actorId = sp.getUUID();
+        if (giveUpHeld) GIVEUP_HOLDING.add(actorId);
+        else GIVEUP_HOLDING.remove(actorId);
+
+        MinecraftServer srv = sp.level().getServer();
+        if (srv == null) return;
+        if (DOWNED.containsKey(actorId)) return;
+        if (!sp.isAlive() || sp.gameMode() == GameType.SPECTATOR) return;
+
+        DownedEntry held = findHeldBy(actorId);
+        boolean changed = false;
+
+        if (carryPressed) {
+            if (held != null && held.holdMode == MODE_CARRY) {
+                // Put downed player gently on the ground in front of carrier
+                ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
+                Vec3 look = sp.getLookAngle();
+                double lx = look.x, lz = look.z;
+                double ll = Math.hypot(lx, lz);
+                if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                held.draggerId = null;
+                held.draggerName = "";
+                held.holdMode = MODE_NONE;
+                setNoStepUp(sp, false);
+                sp.removeEffect(MobEffects.SLOWNESS);
+                if (victim != null) {
+                    victim.setNoGravity(false);
+                    double dropX = sp.getX() + lx * 1.0;
+                    double dropZ = sp.getZ() + lz * 1.0;
+                    BlockPos bp = BlockPos.containing(dropX, sp.getY() + 0.1, dropZ);
+                    if (!sp.level().getBlockState(bp).isSolid()) {
+                        victim.setPos(dropX, sp.getY(), dropZ);
+                    } else {
+                        victim.setPos(sp.getX(), sp.getY(), sp.getZ());
+                    }
+                    victim.setDeltaMovement(Vec3.ZERO);
+                    victim.resetFallDistance();
+                    victim.connection.resetPosition();
+                }
+                sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.8F, 0.85F);
+                changed = true;
+            } else {
+                DownedEntry targetEntry = held != null ? held : findNearestDowned(sp, cfgReviveRange + 0.8);
+                if (targetEntry != null) {
+                    releaseAnyDraggedBy(srv, actorId);
+                    targetEntry.draggerId = actorId;
+                    targetEntry.draggerName = sp.getGameProfile().name();
+                    targetEntry.holdMode = MODE_CARRY;
+                    targetEntry.reviveTicks = 0;
+                    targetEntry.activeReviverName = "";
+                    setNoStepUp(sp, false); // Carrier can climb blocks and look around!
+                    sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, true, false, false)); // Slowness III
+                    sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.9F, 1.15F);
+                    changed = true;
+                }
+            }
+        } else if (throwPressed && held != null && held.holdMode == MODE_CARRY) {
+            ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
+            Vec3 look = sp.getLookAngle();
+            double lx = look.x, lz = look.z;
+            double ll = Math.hypot(lx, lz);
+            if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+            double startX = sp.getX() + lx * 0.65;
+            double startY = sp.getY() + 1.35;
+            double startZ = sp.getZ() + lz * 0.65;
+            BlockPos launchPos = BlockPos.containing(startX, startY, startZ);
+            if (sp.level().getBlockState(launchPos).isSolid()) {
+                startX = sp.getX();
+                startY = sp.getY() + 1.15;
+                startZ = sp.getZ();
+            }
+            double vx = lx * 0.64;
+            double vy = Math.max(0.50, Math.min(0.76, 0.56 + look.y * 0.25));
+            double vz = lz * 0.64;
+
+            held.draggerId = null;
+            held.draggerName = "";
+            held.holdMode = MODE_NONE;
+            held.dragX = startX;
+            held.dragY = startY;
+            held.dragZ = startZ;
+            held.throwSeq++;
+            held.throwVx = vx;
+            held.throwVy = vy;
+            held.throwVz = vz;
+            held.graceTicks = 30;
+            held.throwProtectTicks = 25;
+
+            setNoStepUp(sp, false);
+            sp.removeEffect(MobEffects.SLOWNESS);
+            if (victim != null) {
+                victim.setNoGravity(false);
+                victim.setPos(startX, startY, startZ);
+                victim.setDeltaMovement(vx, vy, vz);
+                victim.needsSync = true;
+                victim.resetFallDistance();
+                victim.connection.resetPosition();
+            }
+            sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.PLAYERS, 0.9F, 0.85F);
+            changed = true;
+        } else if (dragPressed) {
+            if (held != null) {
+                held.draggerId = null;
+                held.draggerName = "";
+                held.holdMode = MODE_NONE;
+                setNoStepUp(sp, false);
+                sp.removeEffect(MobEffects.SLOWNESS);
+                ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
+                if (victim != null) victim.setNoGravity(false);
+                sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.7F, 0.8F);
+                changed = true;
+            } else {
+                DownedEntry targetEntry = findNearestDowned(sp, cfgReviveRange + 0.8);
+                if (targetEntry != null) {
+                    ServerPlayer victim = srv.getPlayerList().getPlayer(targetEntry.playerId);
+                    releaseAnyDraggedBy(srv, actorId);
+                    targetEntry.draggerId = actorId;
+                    targetEntry.draggerName = sp.getGameProfile().name();
+                    targetEntry.holdMode = MODE_DRAG;
+                    targetEntry.reviveTicks = 0;
+                    targetEntry.activeReviverName = "";
+                    if (victim != null) {
+                        targetEntry.dragX = victim.getX();
+                        targetEntry.dragY = victim.getY();
+                        targetEntry.dragZ = victim.getZ();
+                    }
+                    setNoStepUp(sp, true);
+                    sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 1, true, false, false)); // Heavy drag slowness
+                    sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.85F, 1.05F);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            syncAllClients(srv);
+        }
+    }
+
+    private static void onSwapItems(LivingSwapItemsEvent.Hands event) {
+        if (!(event.getEntity() instanceof ServerPlayer sp)) return;
+        if (DOWNED.containsKey(sp.getUUID()) || findHeldBy(sp.getUUID()) != null || findNearestDowned(sp, cfgReviveRange + 0.8) != null) {
+            event.setCanceled(true);
         }
     }
 
     private static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (DOWNED.containsKey(event.getEntity().getUUID())) {
             event.setCanceled(true);
-            return;
-        }
-        if (event.getHand() != InteractionHand.MAIN_HAND) {
-            return;
-        }
-        if (event.getEntity() instanceof ServerPlayer dragger && event.getTarget() instanceof ServerPlayer target) {
-            DownedEntry entry = DOWNED.get(target.getUUID());
-            if (entry == null) return;
-            if (!dragger.isAlive() || dragger.gameMode() == GameType.SPECTATOR) return;
-            if (dragger.level() != target.level() || dragger.distanceToSqr(target) > (cfgReviveRange + 1.0) * (cfgReviveRange + 1.0)) {
-                return;
-            }
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.SUCCESS);
-
-            if (dragger.getUUID().equals(entry.draggerId)) {
-                entry.draggerId = null;
-                entry.draggerName = "";
-                dragger.level().playSound(null, dragger.getX(), dragger.getY(), dragger.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.7F, 0.8F);
-            } else {
-                releaseAnyDraggedBy(dragger.getUUID());
-                entry.draggerId = dragger.getUUID();
-                entry.draggerName = dragger.getGameProfile().name();
-                entry.dragX = target.getX();
-                entry.dragY = target.getY();
-                entry.dragZ = target.getZ();
-                dragger.level().playSound(null, dragger.getX(), dragger.getY(), dragger.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.85F, 1.15F);
-            }
-            syncAllClients(dragger.level().getServer());
         }
     }
 
@@ -524,6 +710,10 @@ public final class ReviveServerManager {
 
     private static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
+            if (!DOWNED.containsKey(sp.getUUID()) && findHeldBy(sp.getUUID()) == null) {
+                setNoStepUp(sp, false);
+                sp.setNoGravity(false);
+            }
             syncToPlayer(sp, sp.level().getServer());
         }
     }
@@ -531,9 +721,10 @@ public final class ReviveServerManager {
     private static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
             UUID id = sp.getUUID();
-            USE_HOLDING.remove(id);
             GIVEUP_HOLDING.remove(id);
-            releaseAnyDraggedBy(id);
+            releaseAnyDraggedBy(sp.level().getServer(), id);
+            setNoStepUp(sp, false);
+            sp.setNoGravity(false);
             if (DOWNED.containsKey(id)) {
                 finishBleedout(sp);
             }
@@ -543,10 +734,20 @@ public final class ReviveServerManager {
     private static void cleanupDownedState(ServerPlayer sp) {
         DownedEntry removed = DOWNED.remove(sp.getUUID());
         if (removed != null) {
+            if (removed.draggerId != null && sp.level().getServer() != null) {
+                ServerPlayer dragger = sp.level().getServer().getPlayerList().getPlayer(removed.draggerId);
+                if (dragger != null) {
+                    setNoStepUp(dragger, false);
+                    dragger.removeEffect(MobEffects.SLOWNESS);
+                }
+            }
             removed.draggerId = null;
             removed.draggerName = "";
+            removed.holdMode = MODE_NONE;
         }
         GIVEUP_HOLDING.remove(sp.getUUID());
+        setNoStepUp(sp, false);
+        sp.setNoGravity(false);
         sp.setForcedPose(null);
         sp.removeEffect(MobEffects.SLOWNESS);
         sp.removeEffect(MobEffects.MINING_FATIGUE);
@@ -614,9 +815,14 @@ public final class ReviveServerManager {
             if (victim == null) continue;
 
             if (entry.graceTicks > 0) entry.graceTicks--;
+            if (entry.throwProtectTicks > 0) {
+                entry.throwProtectTicks--;
+                victim.connection.resetPosition();
+            }
             if (victim.getHealth() > 1.0F) victim.setHealth(1.0F);
             victim.setSprinting(false);
             victim.resetFallDistance();
+            setNoStepUp(victim, true);
             if (victim.containerMenu != victim.inventoryMenu) {
                 victim.closeContainer();
             }
@@ -627,7 +833,7 @@ public final class ReviveServerManager {
                 victim.clearFire();
             }
 
-            // Update active drag tether if someone is dragging this downed player
+            // Update active Drag (mode=1) or Shoulder Carry (mode=2)
             if (entry.draggerId != null) {
                 ServerPlayer dragger = srv.getPlayerList().getPlayer(entry.draggerId);
                 boolean validDragger = dragger != null
@@ -635,13 +841,41 @@ public final class ReviveServerManager {
                         && !DOWNED.containsKey(dragger.getUUID())
                         && dragger.gameMode() != GameType.SPECTATOR
                         && dragger.level() == victim.level()
-                        && !dragger.isShiftKeyDown()
-                        && dragger.distanceToSqr(victim) <= 42.25;
+                        && (entry.holdMode == MODE_CARRY || dragger.distanceToSqr(victim) <= 42.25);
                 if (!validDragger) {
+                    if (dragger != null) {
+                        setNoStepUp(dragger, false);
+                        dragger.removeEffect(MobEffects.SLOWNESS);
+                    }
                     entry.draggerId = null;
                     entry.draggerName = "";
+                    entry.holdMode = MODE_NONE;
+                    victim.setNoGravity(false);
+                    dirty = true;
+                } else if (entry.holdMode == MODE_CARRY) {
+                    // Carry on shoulders with Slowness III + free camera + normal step height
+                    setNoStepUp(dragger, false);
+                    dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 2, true, false, false));
+                    Vec3 look = dragger.getLookAngle();
+                    double lx = look.x, lz = look.z;
+                    double ll = Math.hypot(lx, lz);
+                    if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                    double sx = dragger.getX() - lx * 0.35;
+                    double sy = dragger.getY() + 1.38;
+                    double sz = dragger.getZ() - lz * 0.35;
+                    entry.dragX = sx;
+                    entry.dragY = sy;
+                    entry.dragZ = sz;
+                    victim.setNoGravity(true);
+                    victim.setPos(sx, sy, sz);
+                    victim.setDeltaMovement(Vec3.ZERO);
+                    victim.connection.resetPosition();
                     dirty = true;
                 } else {
+                    // Ground drag: neither dragger nor victim can climb blocks; heavy drag slowness
+                    setNoStepUp(dragger, true);
+                    dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 1, true, false, false));
+                    victim.setNoGravity(false);
                     double dx = victim.getX() - dragger.getX();
                     double dz = victim.getZ() - dragger.getZ();
                     double hDist = Math.hypot(dx, dz);
@@ -661,28 +895,29 @@ public final class ReviveServerManager {
                         entry.dragX = victim.getX();
                         entry.dragZ = victim.getZ();
                     }
-                    entry.dragY = dragger.getY();
+                    entry.dragY = victim.getY();
                     victim.connection.resetPosition();
                     dirty = true;
                 }
             }
 
-            // Look for closest healthy reviver holding Shift within range
+            // Look for closest healthy reviver holding Shift within range (only when downed player is resting on ground)
             ServerPlayer reviver = null;
-            double bestDistSq = cfgReviveRange * cfgReviveRange;
-            for (ServerPlayer candidate : srv.getPlayerList().getPlayers()) {
-                if (candidate.getUUID().equals(victim.getUUID())) continue;
-                if (DOWNED.containsKey(candidate.getUUID())) continue;
-                if (!candidate.isAlive() || candidate.gameMode() == GameType.SPECTATOR) continue;
-                if (candidate.level() != victim.level()) continue;
+            if (entry.holdMode == MODE_NONE) {
+                double bestDistSq = cfgReviveRange * cfgReviveRange;
+                for (ServerPlayer candidate : srv.getPlayerList().getPlayers()) {
+                    if (candidate.getUUID().equals(victim.getUUID())) continue;
+                    if (DOWNED.containsKey(candidate.getUUID())) continue;
+                    if (!candidate.isAlive() || candidate.gameMode() == GameType.SPECTATOR) continue;
+                    if (candidate.level() != victim.level()) continue;
+                    if (findHeldBy(candidate.getUUID()) != null) continue;
+                    if (!candidate.isShiftKeyDown()) continue;
 
-                boolean holdingAction = candidate.isShiftKeyDown();
-                if (!holdingAction) continue;
-
-                double dSq = candidate.distanceToSqr(victim);
-                if (dSq <= bestDistSq) {
-                    bestDistSq = dSq;
-                    reviver = candidate;
+                    double dSq = candidate.distanceToSqr(victim);
+                    if (dSq <= bestDistSq) {
+                        bestDistSq = dSq;
+                        reviver = candidate;
+                    }
                 }
             }
 
@@ -771,7 +1006,12 @@ public final class ReviveServerManager {
                     .append(clean(entry.draggerName)).append("|")
                     .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragX)).append("|")
                     .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragY)).append("|")
-                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragZ));
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragZ)).append("|")
+                    .append(entry.holdMode).append("|")
+                    .append(entry.throwSeq).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.throwVx)).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.throwVy)).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.throwVz));
         }
         return sb.toString();
     }
@@ -843,15 +1083,21 @@ import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.NeoForge;
 
 public final class ReviveClient {
+    public static final int MODE_NONE = 0;
+    public static final int MODE_DRAG = 1;
+    public static final int MODE_CARRY = 2;
+
     public record DownedView(
             String uuid,
             String name,
@@ -868,19 +1114,29 @@ public final class ReviveClient {
             String draggerName,
             double dragX,
             double dragY,
-            double dragZ
+            double dragZ,
+            int holdMode,
+            int throwSeq,
+            double throwVx,
+            double throwVy,
+            double throwVz
     ) {}
 
     private static volatile List<DownedView> DOWNED_LIST = List.of();
     private static volatile boolean wasSelfDowned = false;
-    private static volatile boolean lastUseHeld = false;
+    private static volatile boolean wasSelfCarried = false;
     private static volatile boolean lastGiveUpHeld = false;
     private static volatile int localGiveUpTicks = 0;
+    private static volatile int lastThrowSeq = -1;
+    private static volatile boolean dragLockActive = false;
+    private static volatile float dragLockYaw = 0.0F;
+    private static volatile float dragLockPitch = 0.0F;
 
     private ReviveClient() {}
 
     public static void init() {
         SyncDownedPayload.setClientHandler(ReviveClient::onSync);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderFramePre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTickPre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onScreenOpening);
@@ -892,9 +1148,11 @@ public final class ReviveClient {
     private static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         DOWNED_LIST = List.of();
         wasSelfDowned = false;
-        lastUseHeld = false;
+        wasSelfCarried = false;
         lastGiveUpHeld = false;
         localGiveUpTicks = 0;
+        lastThrowSeq = -1;
+        dragLockActive = false;
     }
 
     private static void onSync(String encoded) {
@@ -902,7 +1160,7 @@ public final class ReviveClient {
         if (encoded != null && !encoded.isBlank()) {
             for (String line : encoded.split("\n")) {
                 String[] p = line.split("\\|", -1);
-                if (p.length >= 16) {
+                if (p.length >= 21) {
                     next.add(new DownedView(
                             p[0],
                             p[1],
@@ -911,7 +1169,7 @@ public final class ReviveClient {
                             parseDouble(p[4], 0.0),
                             parseDouble(p[5], 0.0),
                             parseInt(p[6], 0),
-                            Math.max(1, parseInt(p[7], 900)),
+                            Math.max(1, parseInt(p[7], 2400)),
                             parseInt(p[8], 0),
                             Math.max(1, parseInt(p[9], 70)),
                             p[10],
@@ -919,7 +1177,12 @@ public final class ReviveClient {
                             p[12],
                             parseDouble(p[13], 0.0),
                             parseDouble(p[14], 0.0),
-                            parseDouble(p[15], 0.0)
+                            parseDouble(p[15], 0.0),
+                            parseInt(p[16], 0),
+                            parseInt(p[17], 0),
+                            parseDouble(p[18], 0.0),
+                            parseDouble(p[19], 0.0),
+                            parseDouble(p[20], 0.0)
                     ));
                 }
             }
@@ -944,6 +1207,66 @@ public final class ReviveClient {
         return null;
     }
 
+    private static DownedView findHeldTarget(LocalPlayer me) {
+        if (me == null) return null;
+        String myId = me.getUUID().toString();
+        for (DownedView v : DOWNED_LIST) {
+            if (myId.equals(v.draggerUuid()) && v.holdMode() != MODE_NONE) return v;
+        }
+        return null;
+    }
+
+    private static DownedView findNearestDowned(LocalPlayer me, double maxDist) {
+        if (me == null) return null;
+        String myDim = me.level().dimension().identifier().toString();
+        String myId = me.getUUID().toString();
+        double bestSq = maxDist * maxDist;
+        DownedView best = null;
+        for (DownedView v : DOWNED_LIST) {
+            if (myId.equals(v.uuid()) || !myDim.equals(v.dimension())) continue;
+            double dx = v.x() - me.getX();
+            double dy = v.y() - me.getY();
+            double dz = v.z() - me.getZ();
+            double sq = dx * dx + dy * dy + dz * dz;
+            if (sq <= bestSq) {
+                bestSq = sq;
+                best = v;
+            }
+        }
+        return best;
+    }
+
+    private static void applyDragCameraLock(LocalPlayer me, DownedView held) {
+        if (me != null && held != null && held.holdMode() == MODE_DRAG) {
+            if (!dragLockActive) {
+                dragLockYaw = me.getYRot();
+                dragLockPitch = me.getXRot();
+                dragLockActive = true;
+            } else {
+                me.setYRot(dragLockYaw);
+                me.setXRot(dragLockPitch);
+                me.yRotO = dragLockYaw;
+                me.xRotO = dragLockPitch;
+                me.yHeadRot = dragLockYaw;
+                me.yBodyRot = dragLockYaw;
+            }
+        } else {
+            dragLockActive = false;
+        }
+    }
+
+    private static void onRenderFramePre(RenderFrameEvent.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer me = mc.player;
+        if (me == null) return;
+        DownedView self = findSelf(me);
+        if (self == null) {
+            applyDragCameraLock(me, findHeldTarget(me));
+        } else {
+            dragLockActive = false;
+        }
+    }
+
     private static void onScreenOpening(ScreenEvent.Opening event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null && findSelf(mc.player) != null) {
@@ -959,33 +1282,113 @@ public final class ReviveClient {
         LocalPlayer me = mc.player;
         if (me == null || mc.getConnection() == null) return;
 
-        DownedView self = findSelf(me);
-        if (self == null) return;
-
-        // Block opening inventory key & close any open container while downed
-        while (mc.options.keyInventory.consumeClick()) {}
-        if (mc.gui.screen() instanceof AbstractContainerScreen<?>) {
-            me.closeContainer();
-            mc.gui.setScreen(null);
+        // Visually anchor any remotely carried downed player onto their carrier's shoulders
+        if (mc.level != null && !DOWNED_LIST.isEmpty()) {
+            String myId = me.getUUID().toString();
+            for (DownedView v : DOWNED_LIST) {
+                if (myId.equals(v.uuid())) continue;
+                if (v.holdMode() == MODE_CARRY) {
+                    for (Player rp : mc.level.players()) {
+                        if (rp != me && rp.getUUID().toString().equals(v.uuid())) {
+                            rp.setPos(v.dragX(), v.dragY(), v.dragZ());
+                            rp.setDeltaMovement(0.0, 0.0, 0.0);
+                            rp.setForcedPose(Pose.SWIMMING);
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
-        // Smooth drag glide toward dragger's tether spot
-        if (!self.draggerUuid().isEmpty()) {
-            double dx = self.dragX() - me.getX();
-            double dy = self.dragY() - me.getY();
-            double dz = self.dragZ() - me.getZ();
-            double hDist = Math.hypot(dx, dz);
-            if (hDist > 0.08) {
-                double speed = Math.min(0.45, hDist * 0.52);
-                double vx = (dx / hDist) * speed;
-                double vz = (dz / hDist) * speed;
-                double curVy = me.getDeltaMovement().y;
-                if (dy > 0.12 && hDist < 3.2 && (me.onGround() || me.horizontalCollision || me.isInWater())) {
-                    curVy = Math.min(0.42, Math.max(curVy, dy * 0.45 + 0.16));
-                }
-                me.setDeltaMovement(vx, curVy, vz);
-                me.resetFallDistance();
+        DownedView self = findSelf(me);
+        if (self != null) {
+            dragLockActive = false;
+            // Block opening inventory key & close any open container while downed
+            while (mc.options.keyInventory.consumeClick()) {}
+            if (mc.gui.screen() instanceof AbstractContainerScreen<?>) {
+                me.closeContainer();
+                mc.gui.setScreen(null);
             }
+
+            if (self.throwSeq() > 0 && self.throwSeq() != lastThrowSeq) {
+                lastThrowSeq = self.throwSeq();
+                wasSelfCarried = false;
+                me.setNoGravity(false);
+                me.setPos(self.dragX(), self.dragY(), self.dragZ());
+                me.setDeltaMovement(self.throwVx(), self.throwVy(), self.throwVz());
+                me.resetFallDistance();
+                return;
+            }
+            if (lastThrowSeq == -1) {
+                lastThrowSeq = self.throwSeq();
+            }
+
+            if (self.holdMode() == MODE_CARRY) {
+                wasSelfCarried = true;
+                me.setNoGravity(true);
+                me.setPos(self.dragX(), self.dragY(), self.dragZ());
+                me.setDeltaMovement(0.0, 0.0, 0.0);
+                me.resetFallDistance();
+            } else {
+                if (wasSelfCarried) {
+                    wasSelfCarried = false;
+                    me.setNoGravity(false);
+                }
+                // Ground drag glide: flat XZ pull only (cannot go up blocks!)
+                if (self.holdMode() == MODE_DRAG && !self.draggerUuid().isEmpty()) {
+                    double dx = self.dragX() - me.getX();
+                    double dz = self.dragZ() - me.getZ();
+                    double hDist = Math.hypot(dx, dz);
+                    if (hDist > 0.08) {
+                        double speed = Math.min(0.40, hDist * 0.50);
+                        double vx = (dx / hDist) * speed;
+                        double vz = (dz / hDist) * speed;
+                        me.setDeltaMovement(vx, Math.min(0.0, me.getDeltaMovement().y), vz);
+                        me.resetFallDistance();
+                    }
+                }
+            }
+            return;
+        }
+
+        if (wasSelfCarried) {
+            wasSelfCarried = false;
+            me.setNoGravity(false);
+        }
+
+        DownedView held = findHeldTarget(me);
+        applyDragCameraLock(me, held);
+
+        boolean dragPressed = false;
+        boolean carryPressed = false;
+        boolean throwPressed = false;
+        boolean activeWindow = mc.isWindowActive() && mc.gui.screen() == null;
+
+        if (activeWindow && held != null && held.holdMode() == MODE_DRAG) {
+            while (mc.options.keyJump.consumeClick()) {}
+        }
+        if (activeWindow && held != null && held.holdMode() == MODE_CARRY) {
+            if (mc.options.keyJump.consumeClick()) {
+                while (mc.options.keyJump.consumeClick()) {}
+                throwPressed = true;
+            }
+        }
+        DownedView nearby = (held != null) ? held : findNearestDowned(me, 4.0);
+        if (activeWindow && nearby != null) {
+            if (mc.options.keySwapOffhand.consumeClick()) {
+                while (mc.options.keySwapOffhand.consumeClick()) {}
+                if (mc.options.keyShift.isDown()) {
+                    carryPressed = true;
+                } else {
+                    dragPressed = true;
+                }
+            }
+        }
+
+        if (dragPressed || carryPressed || throwPressed) {
+            try {
+                ClientPacketDistributor.sendToServer(new ReviveHoldPayload(dragPressed, carryPressed, throwPressed, false));
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -1006,11 +1409,15 @@ public final class ReviveClient {
             }
         } else if (wasSelfDowned) {
             wasSelfDowned = false;
+            wasSelfCarried = false;
+            lastThrowSeq = -1;
+            me.setNoGravity(false);
             me.setForcedPose(null);
+        } else {
+            applyDragCameraLock(me, findHeldTarget(me));
         }
 
-        boolean useDown = false;
-        boolean giveUpDown = (self != null && mc.isWindowActive() && mc.options.keyJump.isDown());
+        boolean giveUpDown = (self != null && mc.isWindowActive() && mc.gui.screen() == null && mc.options.keyJump.isDown());
 
         if (giveUpDown) {
             localGiveUpTicks = Math.min(30, localGiveUpTicks + 1);
@@ -1018,11 +1425,10 @@ public final class ReviveClient {
             localGiveUpTicks = 0;
         }
 
-        if (useDown != lastUseHeld || giveUpDown != lastGiveUpHeld) {
-            lastUseHeld = useDown;
+        if (giveUpDown != lastGiveUpHeld) {
             lastGiveUpHeld = giveUpDown;
             try {
-                ClientPacketDistributor.sendToServer(new ReviveHoldPayload(useDown, giveUpDown));
+                ClientPacketDistributor.sendToServer(new ReviveHoldPayload(false, false, false, giveUpDown));
             } catch (Throwable ignored) {}
         }
     }
@@ -1030,14 +1436,24 @@ public final class ReviveClient {
     private static void onMovementInput(MovementInputUpdateEvent event) {
         if (!(event.getEntity() instanceof LocalPlayer me)) return;
         DownedView self = findSelf(me);
-        if (self == null) return;
-        ClientInput ci = event.getInput();
-        Input k = ci.keyPresses;
-        boolean dragged = !self.draggerUuid().isEmpty();
-        ci.keyPresses = dragged
-                ? new Input(false, false, false, false, false, false, false)
-                : new Input(k.forward(), k.backward(), k.left(), k.right(), false, false, false);
-        me.setSprinting(false);
+        if (self != null) {
+            ClientInput ci = event.getInput();
+            Input k = ci.keyPresses;
+            boolean held = self.holdMode() != MODE_NONE;
+            ci.keyPresses = held
+                    ? new Input(false, false, false, false, false, false, false)
+                    : new Input(k.forward(), k.backward(), k.left(), k.right(), false, false, false);
+            me.setSprinting(false);
+            return;
+        }
+        DownedView held = findHeldTarget(me);
+        if (held != null && held.holdMode() == MODE_DRAG) {
+            // Dragger cannot sprint or jump while dragging on ground
+            ClientInput ci = event.getInput();
+            Input k = ci.keyPresses;
+            ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), false, k.shift(), false);
+            me.setSprinting(false);
+        }
     }
 
     private static void onRenderGui(RenderGuiEvent.Post event) {
@@ -1059,10 +1475,11 @@ public final class ReviveClient {
             int bx = (sw - bw) / 2;
             int by = sh - 98;
             boolean reviving = self.reviveTicks() > 0 && !self.reviverName().isEmpty();
-            boolean dragged = !reviving && !self.draggerUuid().isEmpty();
+            boolean carried = !reviving && self.holdMode() == MODE_CARRY && !self.draggerUuid().isEmpty();
+            boolean dragged = !reviving && !carried && self.holdMode() == MODE_DRAG && !self.draggerUuid().isEmpty();
             boolean urgent = !reviving && self.bleedTicks() <= 200; // < 10s
 
-            int accent = reviving ? 0xFF4ADE80 : (dragged ? 0xFF38BDF8 : (localGiveUpTicks > 0 ? 0xFFE09F3E : 0xFFE84848));
+            int accent = reviving ? 0xFF4ADE80 : ((carried || dragged) ? 0xFF38BDF8 : (localGiveUpTicks > 0 ? 0xFFE09F3E : 0xFFE84848));
             int border = 0xFF3B2D21;
 
             // Sleek warm espresso card + 1px hairline border + 3px left status bar
@@ -1081,6 +1498,10 @@ public final class ReviveClient {
                 leftTitle = "REVIVING · " + self.reviverName();
                 rightStat = pct + "%";
                 ratio = Math.min(1.0, self.reviveTicks() / (double) self.maxReviveTicks());
+            } else if (carried) {
+                leftTitle = "CARRIED · " + self.draggerName();
+                rightStat = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
+                ratio = Math.max(0.0, Math.min(1.0, self.bleedTicks() / (double) self.maxBleedTicks()));
             } else if (dragged) {
                 leftTitle = "DRAGGED · " + self.draggerName();
                 rightStat = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
@@ -1092,7 +1513,7 @@ public final class ReviveClient {
             }
             int statW = mc.font.width(rightStat);
             String clippedLeft = mc.font.plainSubstrByWidth(leftTitle, bw - statW - 26);
-            int leftCol = reviving ? 0xFF4ADE80 : (dragged ? 0xFF7DD3FC : (urgent ? 0xFFFF7A7A : 0xFFF5ECE0));
+            int leftCol = reviving ? 0xFF4ADE80 : ((carried || dragged) ? 0xFF7DD3FC : (urgent ? 0xFFFF7A7A : 0xFFF5ECE0));
             int statCol = reviving ? 0xFF6BC482 : (urgent ? 0xFFFF6464 : 0xFFE09F3E);
             g.text(mc.font, clippedLeft, bx + 10, by + 6, leftCol, false);
             g.text(mc.font, rightStat, bx + bw - 10 - statW, by + 6, statCol, false);
@@ -1125,18 +1546,14 @@ public final class ReviveClient {
             return;
         }
 
-        // Healthy player HUD: active revive bar, active drag indicator, and compact downed alerts
+        // Healthy player HUD: active revive, carrying/dragging bar, or nearby downed action prompt
         String myName = me.getGameProfile().name();
-        String myId = me.getUUID().toString();
         DownedView activeTarget = null;
-        DownedView draggedTarget = null;
+        DownedView heldTarget = findHeldTarget(me);
         for (DownedView v : list) {
             if (myName.equalsIgnoreCase(v.reviverName())) {
                 activeTarget = v;
                 break;
-            }
-            if (draggedTarget == null && myId.equalsIgnoreCase(v.draggerUuid())) {
-                draggedTarget = v;
             }
         }
         if (activeTarget != null) {
@@ -1157,21 +1574,36 @@ public final class ReviveClient {
             int fillW = (int) Math.round(barW * Math.min(1.0, activeTarget.reviveTicks() / (double) activeTarget.maxReviveTicks()));
             g.fill(bx + 10, by + 19, bx + 10 + barW, by + 24, 0xFF241B15);
             if (fillW > 0) g.fill(bx + 10, by + 19, bx + 10 + fillW, by + 24, 0xFF4ADE80);
-        } else if (draggedTarget != null) {
-            int bw = 224;
+        } else if (heldTarget != null) {
+            boolean isCarry = heldTarget.holdMode() == MODE_CARRY;
+            int bw = 236;
             int bh = 34;
             int bx = (sw - bw) / 2;
             int by = sh - 92;
+            int stripe = isCarry ? 0xFFE09F3E : 0xFF38BDF8;
+            int titleCol = isCarry ? 0xFFF6D37A : 0xFF7DD3FC;
             g.fill(bx, by, bx + bw, by + bh, 0xE8130E0B);
             g.fill(bx, by, bx + bw, by + 1, 0xFF3B2D21);
             g.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF3B2D21);
-            g.fill(bx, by, bx + 3, by + bh, 0xFF38BDF8);
-            String title = "DRAGGING " + draggedTarget.name();
-            String sTxt = String.format(Locale.ROOT, "%.0fs", Math.max(0, draggedTarget.bleedTicks()) / 20.0);
-            g.text(mc.font, mc.font.plainSubstrByWidth(title, bw - 44), bx + 10, by + 6, 0xFF7DD3FC, false);
+            g.fill(bx, by, bx + 3, by + bh, stripe);
+            String title = (isCarry ? "CARRYING " : "DRAGGING ") + heldTarget.name();
+            String sTxt = String.format(Locale.ROOT, "%.0fs", Math.max(0, heldTarget.bleedTicks()) / 20.0);
+            g.text(mc.font, mc.font.plainSubstrByWidth(title, bw - 44), bx + 10, by + 6, titleCol, false);
             g.text(mc.font, sTxt, bx + bw - 10 - mc.font.width(sTxt), by + 6, 0xFFE09F3E, false);
-            String hint = "[Shift] Revive / Drop · [Right-Click] Release";
+            String hint = isCarry ? "[Space] Throw · [Shift+F] Put Down" : "[F] Release · [Shift+F] Carry on Back";
             g.text(mc.font, hint, bx + (bw - mc.font.width(hint)) / 2, by + 20, 0xFFA89682, false);
+        } else {
+            DownedView near = findNearestDowned(me, 3.6);
+            if (near != null) {
+                String prompt = "[Shift] Revive · [F] Drag · [Shift+F] Carry";
+                int bw = mc.font.width(prompt) + 18;
+                int bh = 18;
+                int bx = (sw - bw) / 2;
+                int by = sh - 82;
+                g.fill(bx, by, bx + bw, by + bh, 0xDD130E0B);
+                g.fill(bx, by, bx + 2, by + bh, 0xFFE09F3E);
+                g.text(mc.font, prompt, bx + 9, by + 5, 0xFFF5ECE0, false);
+            }
         }
 
         String myDim = me.level().dimension().identifier().toString();
