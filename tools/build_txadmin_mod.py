@@ -1335,51 +1335,6 @@ public final class TxAdminServer {
 
         String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries) + worldMeta;
         try {
-            ServerLevel ov = srv.overworld();
-            long dayTime = srv.clockManager().getInstance(
-                    ov.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_CLOCK)
-                            .getOrThrow(net.minecraft.world.clock.WorldClocks.OVERWORLD)
-            ).totalTicks() % 24000L;
-            int weather = ov.isThundering() ? 2 : (ov.isRaining() ? 1 : 0);
-            int diff = srv.getWorldData().getDifficulty().getId();
-            int tickRate = (int) Math.round(srv.tickRateManager().tickrate());
-            int tickFrozen = srv.tickRateManager().isFrozen() ? 1 : 0;
-            long border = Math.round(ov.getWorldBorder().getSize());
-            GameRules gr = ov.getGameRules();
-            int sleepPct = gr.get(GameRules.PLAYERS_SLEEPING_PERCENTAGE);
-            int tickSpeed = gr.get(GameRules.RANDOM_TICK_SPEED);
-            int fireSpread = gr.get(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER);
-            @SuppressWarnings("unchecked")
-            GameRule<Boolean>[] boolRules = new GameRule[] {
-                    GameRules.KEEP_INVENTORY,
-                    GameRules.MOB_GRIEFING,
-                    GameRules.PVP,
-                    GameRules.LOCATOR_BAR,
-                    GameRules.SPAWN_PHANTOMS,
-                    GameRules.ADVANCE_TIME,
-                    GameRules.ADVANCE_WEATHER,
-                    GameRules.SPAWN_PATROLS,
-                    GameRules.SPAWN_WANDERING_TRADERS,
-                    GameRules.SPAWN_WARDENS,
-                    GameRules.SPAWN_MOBS,
-                    GameRules.FALL_DAMAGE,
-                    GameRules.TNT_EXPLODES,
-                    GameRules.SHOW_ADVANCEMENT_MESSAGES,
-                    GameRules.SHOW_DEATH_MESSAGES,
-                    GameRules.IMMEDIATE_RESPAWN
-            };
-            int grMask = 0;
-            for (int i = 0; i < boolRules.length; i++) {
-                if (Boolean.TRUE.equals(gr.get(boolRules[i]))) {
-                    grMask |= (1 << i);
-                }
-            }
-            worldMeta = ";W:" + dayTime + "|" + weather + "|" + diff + "|" + tickRate + "|" + tickFrozen
-                    + "|" + border + "|" + sleepPct + "|" + tickSpeed + "|" + fireSpread + "|" + grMask;
-        } catch (Throwable ignored) {}
-
-        String csv = (openScreen ? "OPEN:" : "SYNC:") + String.join(",", entries) + worldMeta;
-        try {
             PacketDistributor.sendToPlayer(admin, new OpenTxAdminPayload(god, noclip, fly, vanish, nv, speed, selfGm, csv));
         } catch (Throwable t) {
             if (openScreen) {
@@ -2369,16 +2324,220 @@ public final class TxAdminChestGui extends ChestMenu {
 """
 
 # 7. TxAdminClient.java
-FILES["com/thenest/txadmin/client/TxAdminClient.java"] = """package com.thenest.txadmin.client;
+FILES["com/thenest/txadmin/client/TxAdminClient.java"] = r"""package com.thenest.txadmin.client;
 
 import com.thenest.txadmin.OpenTxAdminPayload;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.common.NeoForge;
 
 public final class TxAdminClient {
+    private static volatile int serverStatus = 0; // 0=checking, 1=online, 2=starting, 3=offline
+    private static volatile int onlinePlayers = 0;
+    private static volatile int maxPlayers = 20;
+    private static volatile long lastPingMs = 0L;
+    private static volatile boolean pinging = false;
+    private static volatile List<String> cachedTargets;
+
+    private static final Pattern PAT_ONLINE = Pattern.compile("\"online\"\\s*:\\s*(\\d+)");
+    private static final Pattern PAT_MAX = Pattern.compile("\"max\"\\s*:\\s*(\\d+)");
+
     private TxAdminClient() {}
 
     public static void init() {
         OpenTxAdminPayload.setClientHandler(TxAdminClient::onOpenPayload);
+        NeoForge.EVENT_BUS.addListener(TxAdminClient::onRenderTitleScreen);
+    }
+
+    private static List<String> getPingTargets() {
+        if (cachedTargets != null) return cachedTargets;
+        Set<String> out = new LinkedHashSet<>();
+        try {
+            Path fm = Paths.get("config", "fancymenu", "customization", "the_nest_title_screen.txt");
+            if (Files.exists(fm)) {
+                for (String line : Files.readAllLines(fm, StandardCharsets.UTF_8)) {
+                    int idx = line.indexOf("[action_type:joinserver]");
+                    if (idx >= 0) {
+                        int eq = line.indexOf('=', idx);
+                        if (eq >= 0) {
+                            String addr = line.substring(eq + 1).trim();
+                            if (!addr.isEmpty()) out.add(addr);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        out.add("25.20.236.131:25565");
+        out.add("192.168.1.77:25565");
+        cachedTargets = new ArrayList<>(out);
+        return cachedTargets;
+    }
+
+    private static void writeVarInt(DataOutputStream out, int v) throws Exception {
+        while ((v & ~0x7F) != 0) {
+            out.writeByte((v & 0x7F) | 0x80);
+            v >>>= 7;
+        }
+        out.writeByte(v);
+    }
+
+    private static int readVarInt(DataInputStream in) throws Exception {
+        int numRead = 0;
+        int result = 0;
+        byte read;
+        do {
+            read = in.readByte();
+            int value = (read & 0x7F);
+            result |= (value << (7 * numRead));
+            numRead++;
+            if (numRead > 5) throw new RuntimeException("VarInt too big");
+        } while ((read & 0x80) != 0);
+        return result;
+    }
+
+    private static int trySlpPing(String hostPort) {
+        String host = hostPort;
+        int port = 25565;
+        int colon = hostPort.lastIndexOf(':');
+        if (colon > 0) {
+            host = hostPort.substring(0, colon);
+            try { port = Integer.parseInt(hostPort.substring(colon + 1)); } catch (Exception ignored) {}
+        }
+        boolean connected = false;
+        try (Socket sock = new Socket()) {
+            sock.connect(new InetSocketAddress(host, port), 1200);
+            connected = true;
+            sock.setSoTimeout(1500);
+            DataOutputStream out = new DataOutputStream(sock.getOutputStream());
+            DataInputStream in = new DataInputStream(sock.getInputStream());
+
+            byte[] hb = host.getBytes(StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream hs = new java.io.ByteArrayOutputStream();
+            DataOutputStream hsd = new DataOutputStream(hs);
+            writeVarInt(hsd, 0x00);
+            writeVarInt(hsd, 769);
+            writeVarInt(hsd, hb.length);
+            hsd.write(hb);
+            hsd.writeShort(port);
+            writeVarInt(hsd, 1);
+            byte[] hsBytes = hs.toByteArray();
+
+            writeVarInt(out, hsBytes.length);
+            out.write(hsBytes);
+            out.writeByte(0x01);
+            out.writeByte(0x00);
+            out.flush();
+
+            readVarInt(in); // packet length
+            int pid = readVarInt(in);
+            if (pid != 0x00) return 2;
+            int slen = readVarInt(in);
+            if (slen <= 0 || slen > 65536) return 2;
+            byte[] data = new byte[slen];
+            in.readFully(data);
+            String json = new String(data, StandardCharsets.UTF_8);
+            Matcher mo = PAT_ONLINE.matcher(json);
+            Matcher mm = PAT_MAX.matcher(json);
+            if (mo.find()) onlinePlayers = Integer.parseInt(mo.group(1));
+            if (mm.find()) maxPlayers = Integer.parseInt(mm.group(1));
+            return 1;
+        } catch (Throwable t) {
+            return connected ? 2 : 3;
+        }
+    }
+
+    private static void triggerPingAsync() {
+        long now = System.currentTimeMillis();
+        if (pinging || (now - lastPingMs) < 5000L) return;
+        pinging = true;
+        lastPingMs = now;
+        Thread t = new Thread(() -> {
+            try {
+                int best = 3;
+                for (String target : getPingTargets()) {
+                    int res = trySlpPing(target);
+                    if (res == 1) {
+                        best = 1;
+                        break;
+                    }
+                    if (res == 2) best = 2;
+                }
+                serverStatus = best;
+            } finally {
+                lastPingMs = System.currentTimeMillis();
+                pinging = false;
+            }
+        }, "Nest-Server-Ping");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static void onRenderTitleScreen(ScreenEvent.Render.Post event) {
+        if (!(event.getScreen() instanceof TitleScreen screen)) return;
+        triggerPingAsync();
+        Minecraft mc = Minecraft.getInstance();
+        AbstractWidget joinBtn = null;
+        for (var r : screen.renderables) {
+            if (r instanceof AbstractWidget w && w.visible) {
+                String txt = w.getMessage().getString();
+                if (txt.contains("Join The Nest")) {
+                    joinBtn = w;
+                    break;
+                }
+            }
+        }
+        if (joinBtn == null) return;
+
+        int st = serverStatus;
+        String label = switch (st) {
+            case 1 -> "Online (" + onlinePlayers + "/" + maxPlayers + ")";
+            case 2 -> "Starting...";
+            case 3 -> "Offline";
+            default -> "Checking...";
+        };
+        int dotCol = switch (st) {
+            case 1 -> 0xFF5BD178;
+            case 2 -> 0xFFE09F3E;
+            case 3 -> 0xFFE06C60;
+            default -> 0xFFA89682;
+        };
+        int borderCol = (dotCol & 0x00FFFFFF) | 0x99000000;
+
+        GuiGraphicsExtractor g = event.getGuiGraphics();
+        int bw = mc.font.width(label) + 18;
+        int bh = 18;
+        int bx = joinBtn.getX() + joinBtn.getWidth() + 6;
+        int by = joinBtn.getY() + (joinBtn.getHeight() - bh) / 2;
+        if (bx + bw > screen.width - 4) {
+            bx = Math.max(4, joinBtn.getX() + joinBtn.getWidth() - bw);
+            by = Math.max(4, joinBtn.getY() - bh - 3);
+        }
+
+        g.fill(bx, by, bx + bw, by + bh, 0xDD16110D);
+        g.fill(bx, by, bx + bw, by + 1, borderCol);
+        g.fill(bx, by + bh - 1, bx + bw, by + bh, borderCol);
+        g.fill(bx, by, bx + 1, by + bh, borderCol);
+        g.fill(bx + bw - 1, by, bx + bw, by + bh, borderCol);
+
+        g.fill(bx + 6, by + 7, bx + 10, by + 11, dotCol);
+        g.text(mc.font, label, bx + 14, by + 5, 0xFFF5ECE0, false);
     }
 
     private static void onOpenPayload(OpenTxAdminPayload payload) {

@@ -10,6 +10,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -134,6 +135,102 @@ def resolve_safe_ram_gb(requested_gb: int) -> tuple[int, str]:
     if safe < requested_gb:
         return safe, f"Clamped RAM {requested_gb}GB -> {safe}GB (safe limit {phys_cap}GB, commit free {avail_commit:.1f}GB)"
     return safe, ""
+
+
+def _pack_varint(v: int) -> bytes:
+    out = bytearray()
+    while (v & ~0x7F) != 0:
+        out.append((v & 0x7F) | 0x80)
+        v >>= 7
+    out.append(v)
+    return bytes(out)
+
+
+def _recv_varint(sock: socket.socket) -> int:
+    val = 0
+    shift = 0
+    while True:
+        b = sock.recv(1)
+        if not b:
+            raise EOFError("EOF reading VarInt")
+        byte = b[0]
+        val |= (byte & 0x7F) << shift
+        if not (byte & 0x80):
+            return val
+        shift += 7
+        if shift > 35:
+            raise ValueError("VarInt too long")
+
+
+def ping_mc_server(host_port: str, timeout: float = 1.4) -> tuple[str, int, int]:
+    """Return ('online'|'starting'|'offline', online_players, max_players)."""
+    host = host_port.strip()
+    port = 25565
+    if ":" in host:
+        h_part, p_part = host.rsplit(":", 1)
+        host = h_part.strip()
+        try:
+            port = int(p_part.strip())
+        except ValueError:
+            port = 25565
+    if not host:
+        return ("offline", 0, 0)
+    connected = False
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            connected = True
+            sock.settimeout(timeout)
+            hb = host.encode("utf-8")
+            hs = _pack_varint(0) + _pack_varint(769) + _pack_varint(len(hb)) + hb + struct.pack(">H", port) + _pack_varint(1)
+            sock.sendall(_pack_varint(len(hs)) + hs)
+            sock.sendall(b"\x01\x00")
+            _pkt_len = _recv_varint(sock)
+            pid = _recv_varint(sock)
+            if pid != 0:
+                return ("starting", 0, 0)
+            slen = _recv_varint(sock)
+            if slen <= 0 or slen > 65536:
+                return ("starting", 0, 0)
+            buf = bytearray()
+            while len(buf) < slen:
+                chunk = sock.recv(slen - len(buf))
+                if not chunk:
+                    return ("starting", 0, 0)
+                buf.extend(chunk)
+            info = json.loads(buf.decode("utf-8", errors="replace"))
+            players = info.get("players", {})
+            return ("online", int(players.get("online", 0)), int(players.get("max", 20)))
+    except Exception:
+        return ("starting", 0, 0) if connected else ("offline", 0, 0)
+
+
+def check_nest_server_status(targets: list[str]) -> tuple[str, int, int]:
+    """Check all configured server targets and detect local server boot if starting."""
+    seen: list[str] = []
+    for t in targets:
+        t = (t or "").strip()
+        if t and t not in seen:
+            seen.append(t)
+    any_starting = False
+    for tgt in seen:
+        st, onl, mx = ping_mc_server(tgt)
+        if st == "online":
+            return ("online", onl, mx)
+        if st == "starting":
+            any_starting = True
+    if any_starting:
+        return ("starting", 0, 0)
+    # Detect host-side dedicated server starting before port 25565 binds
+    local_lock = r"C:\Users\katen\Desktop\TheNest VanillaEditon Server\world\session.lock"
+    if os.path.exists(local_lock):
+        try:
+            with open(local_lock, "r+b"):
+                pass
+        except PermissionError:
+            return ("starting", 0, 0)
+        except Exception:
+            pass
+    return ("offline", 0, 0)
 
 
 def sha256_file(path: str) -> str:
@@ -1187,6 +1284,8 @@ class NestLauncher:
         initial_nick = (self.state.get("nick") or "").strip()
         if RE_VALID_NICK.match(initial_nick):
             self._trigger_lookup(initial_nick)
+        self._ping_busy = False
+        self.root.after(200, self._schedule_server_ping)
 
     @property
     def install_root(self) -> str:
@@ -1289,6 +1388,19 @@ class NestLauncher:
             fg=ACCENT,
         )
         self.ver_lbl.pack(anchor="w", pady=(1, 0))
+
+        self.srv_badge = tk.Label(
+            hdr,
+            text="● Checking...",
+            font=("Segoe UI", 8, "bold"),
+            bg=SURFACE,
+            fg=MUTED,
+            highlightbackground=BORDER,
+            highlightthickness=1,
+            padx=8,
+            pady=4,
+        )
+        self.srv_badge.pack(side="right", anchor="center")
 
         # 2. Player Nickname + Auto Skin Card
         acct = tk.Frame(self.root, bg=SURFACE, highlightbackground=BORDER, highlightthickness=1, padx=14, pady=12)
@@ -1420,6 +1532,30 @@ class NestLauncher:
 
     def _safe_ui(self, fn) -> None:
         self.ui_queue.put(fn)
+
+    def _schedule_server_ping(self) -> None:
+        if not self._ping_busy:
+            self._ping_busy = True
+            targets = [
+                self.cfg.get("server_address", ""),
+                "25.20.236.131:25565",
+                "192.168.1.77:25565",
+            ]
+            def _run() -> None:
+                try:
+                    st, onl, mx = check_nest_server_status(targets)
+                    def _apply() -> None:
+                        if st == "online":
+                            self.srv_badge.configure(text=f"● Online ({onl}/{mx})", fg=OK_GREEN, highlightbackground="#356844")
+                        elif st == "starting":
+                            self.srv_badge.configure(text="◐ Starting...", fg=ACCENT, highlightbackground="#8c5a16")
+                        else:
+                            self.srv_badge.configure(text="● Offline", fg=ERR_RED, highlightbackground="#6b2c2c")
+                    self._safe_ui(_apply)
+                finally:
+                    self._ping_busy = False
+            threading.Thread(target=_run, daemon=True).start()
+        self.root.after(6000, self._schedule_server_ping)
 
     def _set_status(self, text: str, color: str = MUTED, pct: float | None = None) -> None:
         def _apply() -> None:

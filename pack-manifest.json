@@ -1,11 +1,11 @@
 {
   "pack_name": "The Nest Vanilla Edition",
   "pack_version": "1.0.0",
-  "launcher_version": "1.2.0",
-  "launcher_sha256": "6fe7cd191019e91ec9ffd0380bd26a42bf83d87cbb752f92750220b06c0cc0e8",
+  "launcher_version": "1.3.0",
+  "launcher_sha256": "924e62335eccf14f1987229be0ab6a55cb4395b01660c676b46af76e6f2ab590",
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Launcher.exe",
-  "server_address": "192.168.1.77:25565",
-  "generated_at": "2026-11-18T22:26:18Z",
+  "server_address": "25.20.236.131:25565",
+  "generated_at": "2026-11-19T16:49:12Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -16,7 +16,7 @@
     "defaultconfigs"
   ],
   "total_files": 475,
-  "total_bytes": 459018347,
+  "total_bytes": 459041155,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -287,8 +287,8 @@
       "size": 3214
     },
     "config/fancymenu/customization/the_nest_title_screen.txt": {
-      "sha256": "013205e849c2eb7aaba5ad607f0e57600920c7fa8c2af66211ebd504c94b66fb",
-      "size": 68226
+      "sha256": "44a3cd74d0f2d98ae6823f8864c191bcf177c0547a540ed94285d0ce15b25d74",
+      "size": 68227
     },
     "config/fancymenu/layout_editor/widgets/element_layer_control.lewidget": {
       "sha256": "051d700ea7ff1bd626063d60f9a9cd65a0af1fed5903706d1e70fce20bcb2495",
@@ -351,8 +351,8 @@
       "size": 809
     },
     "config/fml.toml": {
-      "sha256": "52275fedb38f5bb74891ed058c479dd1cca6076c70227948a79e41b9e3a46783",
-      "size": 1541
+      "sha256": "e76e87343fd1496d62f60562bf1f55e84a1b55138f89e6f510a9be1c37fbf698",
+      "size": 1540
     },
     "config/footprintparticle.json": {
       "sha256": "e1781a6c27fc7eb04c9bd3b72a663acf0265217ab7e3e040cf672e6a18a395eb",
@@ -1467,8 +1467,8 @@
       "size": 40450
     },
     "mods/nest_txadmin-1.0.0-neoforge-26.3.jar": {
-      "sha256": "5f7137fff7b82a26eeee36f27d532670b58d9e55902638a10a9638c8eb11b693",
-      "size": 118346
+      "sha256": "7983af237f80367b63dd1ff6b5915a7930b54f47f133436e2b900f0a1fad14fd",
+      "size": 122757
     },
     "mods/nomorepopups-neoforge-26.2-2.3.1.jar": {
       "sha256": "e7c02917439ce13c0afcaeec561fca81332bcaed7b0bfda3df90ca2c33c77ae4",
@@ -1915,8 +1915,8 @@
       "size": 9073
     },
     "servers.dat": {
-      "sha256": "630ffaadefcee5cd727a394e9be20e12224a2b89a98bfe98fef5766b9a71ae66",
-      "size": 18409
+      "sha256": "09bca50ae6f58eea972a1f15966c42e93702ee430ecafdd23a2eb1b39ab72b8c",
+      "size": 36806
     }
   }
 }
