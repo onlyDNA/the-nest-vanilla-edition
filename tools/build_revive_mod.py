@@ -203,6 +203,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionSet;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -210,6 +212,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -218,6 +221,7 @@ import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -235,6 +239,11 @@ public final class ReviveServerManager {
         int graceTicks;
         int giveUpTicks;
         String activeReviverName = "";
+        UUID draggerId = null;
+        String draggerName = "";
+        double dragX = 0.0;
+        double dragY = 0.0;
+        double dragZ = 0.0;
 
         DownedEntry(UUID playerId, String playerName, DamageSource fatalSource, int maxBleedoutTicks, int maxReviveTicks, int graceTicks) {
             this.playerId = playerId;
@@ -275,6 +284,7 @@ public final class ReviveServerManager {
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickItem);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onEntityInteract);
+        NeoForge.EVENT_BUS.addListener(ReviveServerManager::onContainerOpen);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onItemToss);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onPlayerLogout);
@@ -362,6 +372,8 @@ public final class ReviveServerManager {
         sp.clearFire();
         sp.setAirSupply(sp.getMaxAirSupply());
         sp.stopRiding();
+        sp.closeContainer();
+        releaseAnyDraggedBy(sp.getUUID());
         sp.setSprinting(false);
         sp.setForcedPose(Pose.SWIMMING);
         sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, cfgBleedoutTicks + 200, 3, true, false, false));
@@ -392,7 +404,7 @@ public final class ReviveServerManager {
         }
 
         String displayName = sp.getDisplayName().getString();
-        Component msg = Component.literal("§c[The Nest] §e" + displayName + " §cis wounded on the ground! Hold §6[Shift] §cor §6[Right-Click] §cnearby to revive (§e"
+        Component msg = Component.literal("§c[The Nest] §e" + displayName + " §cis wounded on the ground! Hold §6[Shift] §cto revive or §6[Right-Click] §cbody to drag (§e"
                 + (cfgBleedoutTicks / 20) + "s§c)!");
         for (ServerPlayer other : srv.getPlayerList().getPlayers()) {
             other.sendSystemMessage(msg);
@@ -454,15 +466,53 @@ public final class ReviveServerManager {
         }
     }
 
+    private static void releaseAnyDraggedBy(UUID draggerId) {
+        for (DownedEntry e : DOWNED.values()) {
+            if (draggerId.equals(e.draggerId)) {
+                e.draggerId = null;
+                e.draggerName = "";
+            }
+        }
+    }
+
     private static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (DOWNED.containsKey(event.getEntity().getUUID())) {
             event.setCanceled(true);
             return;
         }
-        if (event.getEntity() instanceof ServerPlayer reviver && event.getTarget() instanceof ServerPlayer target) {
-            if (DOWNED.containsKey(target.getUUID())) {
-                USE_HOLDING.add(reviver.getUUID());
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
+        if (event.getEntity() instanceof ServerPlayer dragger && event.getTarget() instanceof ServerPlayer target) {
+            DownedEntry entry = DOWNED.get(target.getUUID());
+            if (entry == null) return;
+            if (!dragger.isAlive() || dragger.gameMode() == GameType.SPECTATOR) return;
+            if (dragger.level() != target.level() || dragger.distanceToSqr(target) > (cfgReviveRange + 1.0) * (cfgReviveRange + 1.0)) {
+                return;
             }
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+
+            if (dragger.getUUID().equals(entry.draggerId)) {
+                entry.draggerId = null;
+                entry.draggerName = "";
+                dragger.level().playSound(null, dragger.getX(), dragger.getY(), dragger.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.7F, 0.8F);
+            } else {
+                releaseAnyDraggedBy(dragger.getUUID());
+                entry.draggerId = dragger.getUUID();
+                entry.draggerName = dragger.getGameProfile().name();
+                entry.dragX = target.getX();
+                entry.dragY = target.getY();
+                entry.dragZ = target.getZ();
+                dragger.level().playSound(null, dragger.getX(), dragger.getY(), dragger.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.85F, 1.15F);
+            }
+            syncAllClients(dragger.level().getServer());
+        }
+    }
+
+    private static void onContainerOpen(PlayerContainerEvent.Open event) {
+        if (event.getEntity() instanceof ServerPlayer sp && DOWNED.containsKey(sp.getUUID())) {
+            sp.closeContainer();
         }
     }
 
@@ -483,6 +533,7 @@ public final class ReviveServerManager {
             UUID id = sp.getUUID();
             USE_HOLDING.remove(id);
             GIVEUP_HOLDING.remove(id);
+            releaseAnyDraggedBy(id);
             if (DOWNED.containsKey(id)) {
                 finishBleedout(sp);
             }
@@ -490,7 +541,11 @@ public final class ReviveServerManager {
     }
 
     private static void cleanupDownedState(ServerPlayer sp) {
-        DOWNED.remove(sp.getUUID());
+        DownedEntry removed = DOWNED.remove(sp.getUUID());
+        if (removed != null) {
+            removed.draggerId = null;
+            removed.draggerName = "";
+        }
         GIVEUP_HOLDING.remove(sp.getUUID());
         sp.setForcedPose(null);
         sp.removeEffect(MobEffects.SLOWNESS);
@@ -561,6 +616,10 @@ public final class ReviveServerManager {
             if (entry.graceTicks > 0) entry.graceTicks--;
             if (victim.getHealth() > 1.0F) victim.setHealth(1.0F);
             victim.setSprinting(false);
+            victim.resetFallDistance();
+            if (victim.containerMenu != victim.inventoryMenu) {
+                victim.closeContainer();
+            }
             if (victim.getForcedPose() != Pose.SWIMMING) {
                 victim.setForcedPose(Pose.SWIMMING);
             }
@@ -568,7 +627,47 @@ public final class ReviveServerManager {
                 victim.clearFire();
             }
 
-            // Look for closest healthy reviver holding Shift OR Right-Click within range
+            // Update active drag tether if someone is dragging this downed player
+            if (entry.draggerId != null) {
+                ServerPlayer dragger = srv.getPlayerList().getPlayer(entry.draggerId);
+                boolean validDragger = dragger != null
+                        && dragger.isAlive()
+                        && !DOWNED.containsKey(dragger.getUUID())
+                        && dragger.gameMode() != GameType.SPECTATOR
+                        && dragger.level() == victim.level()
+                        && !dragger.isShiftKeyDown()
+                        && dragger.distanceToSqr(victim) <= 42.25;
+                if (!validDragger) {
+                    entry.draggerId = null;
+                    entry.draggerName = "";
+                    dirty = true;
+                } else {
+                    double dx = victim.getX() - dragger.getX();
+                    double dz = victim.getZ() - dragger.getZ();
+                    double hDist = Math.hypot(dx, dz);
+                    if (hDist > 1.45) {
+                        double scale = 1.30 / hDist;
+                        entry.dragX = dragger.getX() + dx * scale;
+                        entry.dragZ = dragger.getZ() + dz * scale;
+                    } else if (hDist < 0.05) {
+                        Vec3 look = dragger.getLookAngle();
+                        double lx = look.x;
+                        double lz = look.z;
+                        double ll = Math.hypot(lx, lz);
+                        if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                        entry.dragX = dragger.getX() - lx * 1.25;
+                        entry.dragZ = dragger.getZ() - lz * 1.25;
+                    } else {
+                        entry.dragX = victim.getX();
+                        entry.dragZ = victim.getZ();
+                    }
+                    entry.dragY = dragger.getY();
+                    victim.connection.resetPosition();
+                    dirty = true;
+                }
+            }
+
+            // Look for closest healthy reviver holding Shift within range
             ServerPlayer reviver = null;
             double bestDistSq = cfgReviveRange * cfgReviveRange;
             for (ServerPlayer candidate : srv.getPlayerList().getPlayers()) {
@@ -577,7 +676,7 @@ public final class ReviveServerManager {
                 if (!candidate.isAlive() || candidate.gameMode() == GameType.SPECTATOR) continue;
                 if (candidate.level() != victim.level()) continue;
 
-                boolean holdingAction = candidate.isShiftKeyDown() || USE_HOLDING.contains(candidate.getUUID());
+                boolean holdingAction = candidate.isShiftKeyDown();
                 if (!holdingAction) continue;
 
                 double dSq = candidate.distanceToSqr(victim);
@@ -667,7 +766,12 @@ public final class ReviveServerManager {
                     .append(entry.maxBleedoutTicks).append("|")
                     .append(entry.reviveTicks).append("|")
                     .append(entry.maxReviveTicks).append("|")
-                    .append(clean(entry.activeReviverName));
+                    .append(clean(entry.activeReviverName)).append("|")
+                    .append(entry.draggerId != null ? entry.draggerId.toString() : "").append("|")
+                    .append(clean(entry.draggerName)).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragX)).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragY)).append("|")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", entry.dragZ));
         }
         return sb.toString();
     }
@@ -733,6 +837,8 @@ import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Pose;
@@ -741,6 +847,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -756,7 +863,12 @@ public final class ReviveClient {
             int maxBleedTicks,
             int reviveTicks,
             int maxReviveTicks,
-            String reviverName
+            String reviverName,
+            String draggerUuid,
+            String draggerName,
+            double dragX,
+            double dragY,
+            double dragZ
     ) {}
 
     private static volatile List<DownedView> DOWNED_LIST = List.of();
@@ -769,7 +881,9 @@ public final class ReviveClient {
 
     public static void init() {
         SyncDownedPayload.setClientHandler(ReviveClient::onSync);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTickPre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTick);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onScreenOpening);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onMovementInput);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderGui);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onLogout);
@@ -788,7 +902,7 @@ public final class ReviveClient {
         if (encoded != null && !encoded.isBlank()) {
             for (String line : encoded.split("\n")) {
                 String[] p = line.split("\\|", -1);
-                if (p.length >= 11) {
+                if (p.length >= 16) {
                     next.add(new DownedView(
                             p[0],
                             p[1],
@@ -800,7 +914,12 @@ public final class ReviveClient {
                             Math.max(1, parseInt(p[7], 900)),
                             parseInt(p[8], 0),
                             Math.max(1, parseInt(p[9], 70)),
-                            p[10]
+                            p[10],
+                            p[11],
+                            p[12],
+                            parseDouble(p[13], 0.0),
+                            parseDouble(p[14], 0.0),
+                            parseDouble(p[15], 0.0)
                     ));
                 }
             }
@@ -825,6 +944,51 @@ public final class ReviveClient {
         return null;
     }
 
+    private static void onScreenOpening(ScreenEvent.Opening event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null && findSelf(mc.player) != null) {
+            Screen next = event.getNewScreen();
+            if (next instanceof AbstractContainerScreen<?>) {
+                event.setCanceled(true);
+            }
+        }
+    }
+
+    private static void onClientTickPre(ClientTickEvent.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer me = mc.player;
+        if (me == null || mc.getConnection() == null) return;
+
+        DownedView self = findSelf(me);
+        if (self == null) return;
+
+        // Block opening inventory key & close any open container while downed
+        while (mc.options.keyInventory.consumeClick()) {}
+        if (mc.gui.screen() instanceof AbstractContainerScreen<?>) {
+            me.closeContainer();
+            mc.gui.setScreen(null);
+        }
+
+        // Smooth drag glide toward dragger's tether spot
+        if (!self.draggerUuid().isEmpty()) {
+            double dx = self.dragX() - me.getX();
+            double dy = self.dragY() - me.getY();
+            double dz = self.dragZ() - me.getZ();
+            double hDist = Math.hypot(dx, dz);
+            if (hDist > 0.08) {
+                double speed = Math.min(0.45, hDist * 0.52);
+                double vx = (dx / hDist) * speed;
+                double vz = (dz / hDist) * speed;
+                double curVy = me.getDeltaMovement().y;
+                if (dy > 0.12 && hDist < 3.2 && (me.onGround() || me.horizontalCollision || me.isInWater())) {
+                    curVy = Math.min(0.42, Math.max(curVy, dy * 0.45 + 0.16));
+                }
+                me.setDeltaMovement(vx, curVy, vz);
+                me.resetFallDistance();
+            }
+        }
+    }
+
     private static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer me = mc.player;
@@ -835,12 +999,17 @@ public final class ReviveClient {
             wasSelfDowned = true;
             me.setForcedPose(Pose.SWIMMING);
             me.setSprinting(false);
+            while (mc.options.keyInventory.consumeClick()) {}
+            if (mc.gui.screen() instanceof AbstractContainerScreen<?>) {
+                me.closeContainer();
+                mc.gui.setScreen(null);
+            }
         } else if (wasSelfDowned) {
             wasSelfDowned = false;
             me.setForcedPose(null);
         }
 
-        boolean useDown = (self == null && !DOWNED_LIST.isEmpty() && mc.isWindowActive() && mc.options.keyUse.isDown());
+        boolean useDown = false;
         boolean giveUpDown = (self != null && mc.isWindowActive() && mc.options.keyJump.isDown());
 
         if (giveUpDown) {
@@ -860,10 +1029,14 @@ public final class ReviveClient {
 
     private static void onMovementInput(MovementInputUpdateEvent event) {
         if (!(event.getEntity() instanceof LocalPlayer me)) return;
-        if (findSelf(me) == null) return;
+        DownedView self = findSelf(me);
+        if (self == null) return;
         ClientInput ci = event.getInput();
         Input k = ci.keyPresses;
-        ci.keyPresses = new Input(k.forward(), k.backward(), k.left(), k.right(), false, false, false);
+        boolean dragged = !self.draggerUuid().isEmpty();
+        ci.keyPresses = dragged
+                ? new Input(false, false, false, false, false, false, false)
+                : new Input(k.forward(), k.backward(), k.left(), k.right(), false, false, false);
         me.setSprinting(false);
     }
 
@@ -886,9 +1059,10 @@ public final class ReviveClient {
             int bx = (sw - bw) / 2;
             int by = sh - 98;
             boolean reviving = self.reviveTicks() > 0 && !self.reviverName().isEmpty();
+            boolean dragged = !reviving && !self.draggerUuid().isEmpty();
             boolean urgent = !reviving && self.bleedTicks() <= 200; // < 10s
 
-            int accent = reviving ? 0xFF4ADE80 : (localGiveUpTicks > 0 ? 0xFFE09F3E : 0xFFE84848);
+            int accent = reviving ? 0xFF4ADE80 : (dragged ? 0xFF38BDF8 : (localGiveUpTicks > 0 ? 0xFFE09F3E : 0xFFE84848));
             int border = 0xFF3B2D21;
 
             // Sleek warm espresso card + 1px hairline border + 3px left status bar
@@ -907,6 +1081,10 @@ public final class ReviveClient {
                 leftTitle = "REVIVING · " + self.reviverName();
                 rightStat = pct + "%";
                 ratio = Math.min(1.0, self.reviveTicks() / (double) self.maxReviveTicks());
+            } else if (dragged) {
+                leftTitle = "DRAGGED · " + self.draggerName();
+                rightStat = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
+                ratio = Math.max(0.0, Math.min(1.0, self.bleedTicks() / (double) self.maxBleedTicks()));
             } else {
                 leftTitle = "WOUNDED";
                 rightStat = String.format(Locale.ROOT, "%.1fs", Math.max(0, self.bleedTicks()) / 20.0);
@@ -914,7 +1092,7 @@ public final class ReviveClient {
             }
             int statW = mc.font.width(rightStat);
             String clippedLeft = mc.font.plainSubstrByWidth(leftTitle, bw - statW - 26);
-            int leftCol = reviving ? 0xFF4ADE80 : (urgent ? 0xFFFF7A7A : 0xFFF5ECE0);
+            int leftCol = reviving ? 0xFF4ADE80 : (dragged ? 0xFF7DD3FC : (urgent ? 0xFFFF7A7A : 0xFFF5ECE0));
             int statCol = reviving ? 0xFF6BC482 : (urgent ? 0xFFFF6464 : 0xFFE09F3E);
             g.text(mc.font, clippedLeft, bx + 10, by + 6, leftCol, false);
             g.text(mc.font, rightStat, bx + bw - 10 - statW, by + 6, statCol, false);
@@ -947,13 +1125,18 @@ public final class ReviveClient {
             return;
         }
 
-        // Healthy player HUD: active revive bar OR compact downed alert
+        // Healthy player HUD: active revive bar, active drag indicator, and compact downed alerts
         String myName = me.getGameProfile().name();
+        String myId = me.getUUID().toString();
         DownedView activeTarget = null;
+        DownedView draggedTarget = null;
         for (DownedView v : list) {
             if (myName.equalsIgnoreCase(v.reviverName())) {
                 activeTarget = v;
                 break;
+            }
+            if (draggedTarget == null && myId.equalsIgnoreCase(v.draggerUuid())) {
+                draggedTarget = v;
             }
         }
         if (activeTarget != null) {
@@ -974,6 +1157,21 @@ public final class ReviveClient {
             int fillW = (int) Math.round(barW * Math.min(1.0, activeTarget.reviveTicks() / (double) activeTarget.maxReviveTicks()));
             g.fill(bx + 10, by + 19, bx + 10 + barW, by + 24, 0xFF241B15);
             if (fillW > 0) g.fill(bx + 10, by + 19, bx + 10 + fillW, by + 24, 0xFF4ADE80);
+        } else if (draggedTarget != null) {
+            int bw = 224;
+            int bh = 34;
+            int bx = (sw - bw) / 2;
+            int by = sh - 92;
+            g.fill(bx, by, bx + bw, by + bh, 0xE8130E0B);
+            g.fill(bx, by, bx + bw, by + 1, 0xFF3B2D21);
+            g.fill(bx, by + bh - 1, bx + bw, by + bh, 0xFF3B2D21);
+            g.fill(bx, by, bx + 3, by + bh, 0xFF38BDF8);
+            String title = "DRAGGING " + draggedTarget.name();
+            String sTxt = String.format(Locale.ROOT, "%.0fs", Math.max(0, draggedTarget.bleedTicks()) / 20.0);
+            g.text(mc.font, mc.font.plainSubstrByWidth(title, bw - 44), bx + 10, by + 6, 0xFF7DD3FC, false);
+            g.text(mc.font, sTxt, bx + bw - 10 - mc.font.width(sTxt), by + 6, 0xFFE09F3E, false);
+            String hint = "[Shift] Revive / Drop · [Right-Click] Release";
+            g.text(mc.font, hint, bx + (bw - mc.font.width(hint)) / 2, by + 20, 0xFFA89682, false);
         }
 
         String myDim = me.level().dimension().identifier().toString();
@@ -1044,9 +1242,13 @@ targets = [
     r"C:\Users\katen\Desktop\TheNest VanillaEditon Server\mods\nest_revive-1.0.0-neoforge-26.3.jar",
     r"C:\Users\katen\curseforge\minecraft\Instances\The Nest Vanilla Edition\mods\nest_revive-1.0.0-neoforge-26.3.jar",
     r"c:\Users\katen\Desktop\Minecraft Modpack\overrides\mods\nest_revive-1.0.0-neoforge-26.3.jar",
+    r"c:\Users\katen\Desktop\Minecraft Modpack\pack\mods\nest_revive-1.0.0-neoforge-26.3.jar",
     os.path.expandvars(r"%LOCALAPPDATA%\TheNestVanilla\instance\mods\nest_revive-1.0.0-neoforge-26.3.jar"),
 ]
 for dst in targets:
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copy2(out_jar, dst)
-    print("Installed:", dst, os.path.getsize(dst), "bytes")
+    try:
+        shutil.copy2(out_jar, dst)
+        print("Installed:", dst, os.path.getsize(dst), "bytes")
+    except PermissionError:
+        print("LOCKED (in use, restart to apply):", dst)
