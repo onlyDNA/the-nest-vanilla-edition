@@ -1081,6 +1081,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
@@ -1243,12 +1244,13 @@ public final class ReviveClient {
                 dragLockPitch = me.getXRot();
                 dragLockActive = true;
             } else {
-                me.setYRot(dragLockYaw);
-                me.setXRot(dragLockPitch);
-                me.yRotO = dragLockYaw;
-                me.xRotO = dragLockPitch;
-                me.yHeadRot = dragLockYaw;
-                me.yBodyRot = dragLockYaw;
+                float diff = Mth.wrapDegrees(me.getYRot() - dragLockYaw);
+                if (diff > 90.0F || diff < -90.0F) {
+                    float clampedYaw = dragLockYaw + Math.max(-90.0F, Math.min(90.0F, diff));
+                    me.setYRot(clampedYaw);
+                    me.yRotO = clampedYaw;
+                    me.yHeadRot = clampedYaw;
+                }
             }
         } else {
             dragLockActive = false;
