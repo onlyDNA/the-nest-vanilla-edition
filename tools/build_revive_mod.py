@@ -45,6 +45,12 @@ type = "required"
 versionRange = "[26.3]"
 ordering = "NONE"
 side = "BOTH"
+
+[[accessTransformers]]
+file="META-INF/accesstransformer.cfg"
+"""
+
+ACCESS_TRANSFORMER_CFG = """public net.minecraft.client.Camera setPosition(DDD)V
 """
 
 FILES["com/thenest/revive/NestReviveMod.java"] = r"""package com.thenest.revive;
@@ -1150,6 +1156,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.thenest.revive.ReviveHoldPayload;
 import com.thenest.revive.SyncDownedPayload;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -1176,6 +1183,7 @@ import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderPlayerEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.common.NeoForge;
 import org.joml.Vector3f;
@@ -1219,12 +1227,14 @@ public final class ReviveClient {
     private static volatile float dragLockYaw = 0.0F;
     private static volatile float dragLockPitch = 0.0F;
     private static final Set<Integer> FLIPPED_RENDER_IDS = ConcurrentHashMap.newKeySet();
+    private static volatile Method cameraSetPosMethod;
 
     private ReviveClient() {}
 
     public static void init() {
         SyncDownedPayload.setClientHandler(ReviveClient::onSync);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderFramePre);
+        NeoForge.EVENT_BUS.addListener(ReviveClient::onComputeCameraAngles);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPre);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onRenderPlayerPost);
         NeoForge.EVENT_BUS.addListener(ReviveClient::onClientTickPre);
@@ -1372,6 +1382,56 @@ public final class ReviveClient {
         } else {
             dragLockActive = false;
         }
+    }
+
+    private static void setCameraPosSafe(Camera cam, double x, double y, double z) {
+        try {
+            Method m = cameraSetPosMethod;
+            if (m == null) {
+                try {
+                    m = Camera.class.getMethod("setPosition", double.class, double.class, double.class);
+                } catch (NoSuchMethodException ignored) {
+                    m = Camera.class.getDeclaredMethod("setPosition", double.class, double.class, double.class);
+                    m.setAccessible(true);
+                }
+                cameraSetPosMethod = m;
+            }
+            m.invoke(cam, x, y, z);
+        } catch (Throwable ignored) {}
+    }
+
+    private static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer me = mc.player;
+        if (me == null || mc.level == null) return;
+        Camera cam = event.getCamera();
+        if (cam.isDetached()) return;
+        DownedView self = findSelf(me);
+        if (self == null || self.holdMode() != MODE_CARRY || self.draggerUuid().isEmpty()) return;
+
+        Player dragger = null;
+        for (Player p : mc.level.players()) {
+            if (p.getUUID().toString().equals(self.draggerUuid())) {
+                dragger = p;
+                break;
+            }
+        }
+        if (dragger == null) return;
+
+        float pt = event.getPartialTick();
+        Vec3 draggerPos = dragger.getPosition(pt);
+        double rad = Math.toRadians(Mth.lerp(pt, dragger.yBodyRotO, dragger.yBodyRot));
+        double backX = Math.sin(rad);
+        double backZ = -Math.cos(rad);
+        double rightX = -Math.cos(rad);
+        double rightZ = -Math.sin(rad);
+
+        // Rest victim head right behind the carrier's head & right shoulder
+        double px = draggerPos.x + backX * 0.38 + rightX * 0.28;
+        double py = draggerPos.y + 1.50;
+        double pz = draggerPos.z + backZ * 0.38 + rightZ * 0.28;
+        setCameraPosSafe(cam, px, py, pz);
+        event.setRoll(-8.0F);
     }
 
     private static void onRenderPlayerPre(RenderPlayerEvent.Pre<?> event) {
@@ -1901,6 +1961,7 @@ print("JAVAC SUCCEEDED!")
 out_jar = os.path.join(WORK, "nest_revive-1.0.0-neoforge-26.3.jar")
 with zipfile.ZipFile(out_jar, "w", zipfile.ZIP_DEFLATED) as zf:
     zf.writestr("META-INF/neoforge.mods.toml", MODS_TOML)
+    zf.writestr("META-INF/accesstransformer.cfg", ACCESS_TRANSFORMER_CFG)
     for root_dir, _dirs, filenames in os.walk(CLS_DIR):
         for fn in filenames:
             full = os.path.join(root_dir, fn)
