@@ -206,7 +206,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -220,7 +219,6 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -228,10 +226,12 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
+import net.minecraft.world.scores.Team;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.entity.EntityMountEvent;
 import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
 import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
@@ -253,6 +253,7 @@ public final class ReviveServerManager {
     private static final AttributeModifier NO_STEP_MOD = new AttributeModifier(NO_STEP_MOD_ID, -1.0, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
     private static final Identifier CARRY_SLOW_MOD_ID = Identifier.fromNamespaceAndPath(NestReviveMod.MODID, "carry_slow");
     private static final AttributeModifier CARRY_SLOW_MOD = new AttributeModifier(CARRY_SLOW_MOD_ID, -0.45, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL);
+    private static final String CARRY_TEAM_NAME = "nest_revive_carry";
 
     private static final class DownedEntry {
         final UUID playerId;
@@ -276,6 +277,7 @@ public final class ReviveServerManager {
         double throwVy = 0.0;
         double throwVz = 0.0;
         int throwProtectTicks = 0;
+        String prevTeamName = null;
 
         DownedEntry(UUID playerId, String playerName, DamageSource fatalSource, int maxBleedoutTicks, int maxReviveTicks, int graceTicks) {
             this.playerId = playerId;
@@ -293,7 +295,6 @@ public final class ReviveServerManager {
     private static final Map<UUID, DownedEntry> DOWNED = new ConcurrentHashMap<>();
     private static final Set<UUID> BYPASS_DEATH = ConcurrentHashMap.newKeySet();
     private static final Set<UUID> GIVEUP_HOLDING = ConcurrentHashMap.newKeySet();
-    private static final Set<UUID> ALLOW_DISMOUNT = ConcurrentHashMap.newKeySet();
 
     private static volatile int cfgBleedoutTicks = 120 * 20;
     private static volatile int cfgReviveTicks = 70;
@@ -316,7 +317,6 @@ public final class ReviveServerManager {
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onRightClickItem);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onEntityInteract);
-        NeoForge.EVENT_BUS.addListener(ReviveServerManager::onEntityMount);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onSwapItems);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onContainerOpen);
         NeoForge.EVENT_BUS.addListener(ReviveServerManager::onItemToss);
@@ -521,25 +521,38 @@ public final class ReviveServerManager {
         }
     }
 
-    private static void dismountCarried(ServerPlayer victim) {
-        if (victim == null || !victim.isPassenger()) return;
-        Entity vehicle = victim.getVehicle();
-        ALLOW_DISMOUNT.add(victim.getUUID());
-        try {
-            victim.stopRiding();
-        } finally {
-            ALLOW_DISMOUNT.remove(victim.getUUID());
-        }
-        if (vehicle instanceof ServerPlayer dragger) {
-            dragger.connection.send(new ClientboundSetPassengersPacket(dragger));
-        }
-    }
-
-    private static void onEntityMount(EntityMountEvent event) {
-        if (event.isDismounting() && event.getEntityMounting() instanceof ServerPlayer vic) {
-            DownedEntry e = DOWNED.get(vic.getUUID());
-            if (e != null && e.holdMode == MODE_CARRY && !ALLOW_DISMOUNT.contains(vic.getUUID())) {
-                event.setCanceled(true);
+    private static void setCarryTeam(MinecraftServer srv, ServerPlayer sp, DownedEntry entry, boolean enable) {
+        if (srv == null || sp == null) return;
+        Scoreboard sb = srv.getScoreboard();
+        String key = sp.getScoreboardName();
+        if (enable) {
+            if (entry != null && entry.prevTeamName == null) {
+                PlayerTeam cur = sb.getPlayersTeam(key);
+                entry.prevTeamName = (cur != null && !CARRY_TEAM_NAME.equals(cur.getName())) ? cur.getName() : "";
+            }
+            PlayerTeam carryTeam = sb.getPlayerTeam(CARRY_TEAM_NAME);
+            if (carryTeam == null) {
+                carryTeam = sb.addPlayerTeam(CARRY_TEAM_NAME);
+            }
+            if (carryTeam.getCollisionRule() != Team.CollisionRule.NEVER) {
+                carryTeam.setCollisionRule(Team.CollisionRule.NEVER);
+            }
+            if (sb.getPlayersTeam(key) != carryTeam) {
+                sb.addPlayerToTeam(key, carryTeam);
+            }
+        } else {
+            PlayerTeam carryTeam = sb.getPlayerTeam(CARRY_TEAM_NAME);
+            if (carryTeam != null && sb.getPlayersTeam(key) == carryTeam) {
+                sb.removePlayerFromTeam(key, carryTeam);
+            }
+            if (entry != null && entry.prevTeamName != null) {
+                if (!entry.prevTeamName.isEmpty()) {
+                    PlayerTeam prev = sb.getPlayerTeam(entry.prevTeamName);
+                    if (prev != null) {
+                        sb.addPlayerToTeam(key, prev);
+                    }
+                }
+                entry.prevTeamName = null;
             }
         }
     }
@@ -554,7 +567,7 @@ public final class ReviveServerManager {
                 if (srv != null) {
                     ServerPlayer vic = srv.getPlayerList().getPlayer(e.playerId);
                     if (vic != null) {
-                        dismountCarried(vic);
+                        setCarryTeam(srv, vic, e, false);
                         vic.setNoGravity(false);
                     }
                 }
@@ -622,7 +635,7 @@ public final class ReviveServerManager {
                 setCarrySlow(sp, false);
                 sp.removeEffect(MobEffects.SLOWNESS);
                 if (victim != null) {
-                    dismountCarried(victim);
+                    setCarryTeam(srv, victim, held, false);
                     victim.noPhysics = false;
                     victim.setNoGravity(false);
                     double dropX = sp.getX() + lx * 1.0;
@@ -654,8 +667,21 @@ public final class ReviveServerManager {
                     sp.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2, true, false, false)); // Slowness III
                     ServerPlayer victim = srv.getPlayerList().getPlayer(targetEntry.playerId);
                     if (victim != null) {
-                        victim.startRiding(sp, true, false);
-                        sp.connection.send(new ClientboundSetPassengersPacket(sp));
+                        setCarryTeam(srv, victim, targetEntry, true);
+                        Vec3 look = sp.getLookAngle();
+                        double lx = look.x, lz = look.z;
+                        double ll = Math.hypot(lx, lz);
+                        if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                        double sx = sp.getX() - lx * 0.42;
+                        double sy = sp.getY() + 0.68;
+                        double sz = sp.getZ() - lz * 0.42;
+                        targetEntry.dragX = sx;
+                        targetEntry.dragY = sy;
+                        targetEntry.dragZ = sz;
+                        victim.setNoGravity(true);
+                        victim.setPos(sx, sy, sz);
+                        victim.setDeltaMovement(Vec3.ZERO);
+                        victim.connection.resetPosition();
                     }
                     sp.level().playSound(null, sp.getX(), sp.getY(), sp.getZ(), SoundEvents.ARMOR_EQUIP_LEATHER.value(), SoundSource.PLAYERS, 0.9F, 1.15F);
                     changed = true;
@@ -697,7 +723,7 @@ public final class ReviveServerManager {
             setCarrySlow(sp, false);
             sp.removeEffect(MobEffects.SLOWNESS);
             if (victim != null) {
-                dismountCarried(victim);
+                setCarryTeam(srv, victim, held, false);
                 victim.noPhysics = false;
                 victim.setNoGravity(false);
                 victim.setPos(startX, startY, startZ);
@@ -718,7 +744,7 @@ public final class ReviveServerManager {
                 sp.removeEffect(MobEffects.SLOWNESS);
                 ServerPlayer victim = srv.getPlayerList().getPlayer(held.playerId);
                 if (victim != null) {
-                    dismountCarried(victim);
+                    setCarryTeam(srv, victim, held, false);
                     victim.noPhysics = false;
                     victim.setNoGravity(false);
                 }
@@ -735,7 +761,7 @@ public final class ReviveServerManager {
                     targetEntry.reviveTicks = 0;
                     targetEntry.activeReviverName = "";
                     if (victim != null) {
-                        dismountCarried(victim);
+                        setCarryTeam(srv, victim, targetEntry, false);
                         victim.noPhysics = false;
                         targetEntry.dragX = victim.getX();
                         targetEntry.dragY = victim.getY();
@@ -783,6 +809,7 @@ public final class ReviveServerManager {
     private static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
             if (!DOWNED.containsKey(sp.getUUID()) && findHeldBy(sp.getUUID()) == null) {
+                setCarryTeam(sp.level().getServer(), sp, null, false);
                 setNoStepUp(sp, false);
                 setCarrySlow(sp, false);
                 sp.noPhysics = false;
@@ -823,7 +850,7 @@ public final class ReviveServerManager {
             removed.holdMode = MODE_NONE;
         }
         GIVEUP_HOLDING.remove(sp.getUUID());
-        dismountCarried(sp);
+        setCarryTeam(sp.level().getServer(), sp, removed, false);
         setNoStepUp(sp, false);
         setCarrySlow(sp, false);
         sp.noPhysics = false;
@@ -928,7 +955,7 @@ public final class ReviveServerManager {
                         setCarrySlow(dragger, false);
                         dragger.removeEffect(MobEffects.SLOWNESS);
                     }
-                    dismountCarried(victim);
+                    setCarryTeam(srv, victim, entry, false);
                     entry.draggerId = null;
                     entry.draggerName = "";
                     entry.holdMode = MODE_NONE;
@@ -936,19 +963,27 @@ public final class ReviveServerManager {
                     victim.setNoGravity(false);
                     dirty = true;
                 } else if (entry.holdMode == MODE_CARRY) {
-                    // Piggyback riding: Vanilla vehicle attachment gives 0% pushing & passes cleanly through 2x1 doors
+                    // Piggyback carry: scoreboard CollisionRule.NEVER stops 100% pushing, height fits 2x1 doorways cleanly
+                    setCarryTeam(srv, victim, entry, true);
                     setNoStepUp(dragger, false);
                     setCarrySlow(dragger, true);
                     dragger.setSprinting(false);
                     dragger.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 25, 2, true, false, false));
-                    if (victim.getVehicle() != dragger) {
-                        victim.startRiding(dragger, true, false);
-                        dragger.connection.send(new ClientboundSetPassengersPacket(dragger));
-                    }
-                    entry.dragX = dragger.getX();
-                    entry.dragY = dragger.getY();
-                    entry.dragZ = dragger.getZ();
+                    Vec3 look = dragger.getLookAngle();
+                    double lx = look.x, lz = look.z;
+                    double ll = Math.hypot(lx, lz);
+                    if (ll < 1e-4) { lx = 0.0; lz = 1.0; } else { lx /= ll; lz /= ll; }
+                    double sx = dragger.getX() - lx * 0.42;
+                    double sy = dragger.getY() + 0.68;
+                    double sz = dragger.getZ() - lz * 0.42;
+                    entry.dragX = sx;
+                    entry.dragY = sy;
+                    entry.dragZ = sz;
+                    victim.setNoGravity(true);
+                    victim.setPos(sx, sy, sz);
+                    victim.setDeltaMovement(Vec3.ZERO);
                     victim.resetFallDistance();
+                    victim.connection.resetPosition();
                     dirty = true;
                 } else {
                     // Ground drag: neither dragger nor victim can climb blocks; heavy drag slowness
@@ -1459,22 +1494,8 @@ public final class ReviveClient {
                 FLIPPED_RENDER_IDS.add(entityId);
                 return;
             } else if (v.holdMode() == MODE_CARRY) {
-                PoseStack ps = event.getPoseStack();
-                ps.pushPose();
-                float backX = 0.0F;
-                float backZ = 0.0F;
-                for (Player p : mc.level.players()) {
-                    if (p.getUUID().toString().equals(v.draggerUuid())) {
-                        double rad = Math.toRadians(p.yBodyRot);
-                        backX = (float) (Math.sin(rad) * 0.42);
-                        backZ = (float) (-Math.cos(rad) * 0.42);
-                        break;
-                    }
-                }
-                ps.translate(backX, -0.78F, backZ);
                 event.getRenderState().swimAmount = 0.0F;
                 event.getRenderState().isVisuallySwimming = false;
-                FLIPPED_RENDER_IDS.add(entityId);
                 return;
             }
         }
@@ -1500,6 +1521,32 @@ public final class ReviveClient {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer me = mc.player;
         if (me == null || mc.getConnection() == null) return;
+
+        // Keep remotely carried players cleanly anchored behind their carrier's back
+        if (mc.level != null && !DOWNED_LIST.isEmpty()) {
+            String myId = me.getUUID().toString();
+            for (DownedView v : DOWNED_LIST) {
+                if (myId.equals(v.uuid()) || v.holdMode() != MODE_CARRY) continue;
+                Player targetRp = null;
+                Player draggerRp = null;
+                for (Player p : mc.level.players()) {
+                    String pid = p.getUUID().toString();
+                    if (pid.equals(v.uuid())) targetRp = p;
+                    else if (pid.equals(v.draggerUuid())) draggerRp = p;
+                }
+                if (targetRp != null) {
+                    if (draggerRp != null) {
+                        double rad = Math.toRadians(draggerRp.yBodyRot);
+                        double bx = Math.sin(rad) * 0.42;
+                        double bz = -Math.cos(rad) * 0.42;
+                        targetRp.setPos(draggerRp.getX() + bx, draggerRp.getY() + 0.68, draggerRp.getZ() + bz);
+                    } else {
+                        targetRp.setPos(v.dragX(), v.dragY(), v.dragZ());
+                    }
+                    targetRp.setDeltaMovement(0.0, 0.0, 0.0);
+                }
+            }
+        }
 
         DownedView self = findSelf(me);
         if (self != null) {
@@ -1527,6 +1574,23 @@ public final class ReviveClient {
 
             if (self.holdMode() == MODE_CARRY) {
                 wasSelfCarried = true;
+                me.setNoGravity(true);
+                double px = self.dragX();
+                double py = self.dragY();
+                double pz = self.dragZ();
+                if (mc.level != null) {
+                    for (Player p : mc.level.players()) {
+                        if (p.getUUID().toString().equals(self.draggerUuid())) {
+                            double rad = Math.toRadians(p.yBodyRot);
+                            px = p.getX() + Math.sin(rad) * 0.42;
+                            py = p.getY() + 0.68;
+                            pz = p.getZ() - Math.cos(rad) * 0.42;
+                            break;
+                        }
+                    }
+                }
+                me.setPos(px, py, pz);
+                me.setDeltaMovement(0.0, 0.0, 0.0);
                 me.resetFallDistance();
             } else {
                 if (wasSelfCarried) {
