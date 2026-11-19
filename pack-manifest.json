@@ -5,7 +5,7 @@
   "launcher_sha256": "924e62335eccf14f1987229be0ab6a55cb4395b01660c676b46af76e6f2ab590",
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Launcher.exe",
   "server_address": "25.20.236.131:25565",
-  "generated_at": "2026-11-19T17:25:15Z",
+  "generated_at": "2026-11-19T17:34:28Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -16,7 +16,7 @@
     "defaultconfigs"
   ],
   "total_files": 476,
-  "total_bytes": 459065891,
+  "total_bytes": 459067313,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -1471,8 +1471,8 @@
       "size": 24736
     },
     "mods/nest_txadmin-1.0.0-neoforge-26.3.jar": {
-      "sha256": "7983af237f80367b63dd1ff6b5915a7930b54f47f133436e2b900f0a1fad14fd",
-      "size": 122757
+      "sha256": "f5f4b1bb6d68c1ddb45c0797296c3859077213bd19630b1d0daa45535b1d6d96",
+      "size": 124179
     },
     "mods/nomorepopups-neoforge-26.2-2.3.1.jar": {
       "sha256": "e7c02917439ce13c0afcaeec561fca81332bcaed7b0bfda3df90ca2c33c77ae4",

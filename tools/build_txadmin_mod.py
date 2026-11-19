@@ -2329,6 +2329,7 @@ FILES["com/thenest/txadmin/client/TxAdminClient.java"] = r"""package com.thenest
 import com.thenest.txadmin.OpenTxAdminPayload;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -2344,7 +2345,9 @@ import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -2355,6 +2358,13 @@ public final class TxAdminClient {
     private static volatile long lastPingMs = 0L;
     private static volatile boolean pinging = false;
     private static volatile List<String> cachedTargets;
+    private static volatile Method fmGetLayerMethod;
+    private static volatile Method fmGetElementMethod;
+    private static volatile Method fmAbsXMethod;
+    private static volatile Method fmAbsYMethod;
+    private static volatile Method fmAbsWMethod;
+    private static volatile Method fmAbsHMethod;
+    private static volatile boolean fmLookupInit = false;
 
     private static final Pattern PAT_ONLINE = Pattern.compile("\"online\"\\s*:\\s*(\\d+)");
     private static final Pattern PAT_MAX = Pattern.compile("\"max\"\\s*:\\s*(\\d+)");
@@ -2363,7 +2373,7 @@ public final class TxAdminClient {
 
     public static void init() {
         OpenTxAdminPayload.setClientHandler(TxAdminClient::onOpenPayload);
-        NeoForge.EVENT_BUS.addListener(TxAdminClient::onRenderTitleScreen);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, TxAdminClient::onRenderTitleScreen);
     }
 
     private static List<String> getPingTargets() {
@@ -2489,55 +2499,116 @@ public final class TxAdminClient {
         t.start();
     }
 
+    private static int[] findJoinButtonBounds(TitleScreen screen) {
+        // 1. Exact lookup via FancyMenu ScreenCustomizationLayer (nest-title-join-button-0001)
+        try {
+            if (!fmLookupInit) {
+                fmLookupInit = true;
+                Class<?> handlerCls = Class.forName("de.keksuccino.fancymenu.customization.layer.ScreenCustomizationLayerHandler");
+                fmGetLayerMethod = handlerCls.getMethod("getLayerOfScreen", Screen.class);
+                Class<?> layerCls = Class.forName("de.keksuccino.fancymenu.customization.layer.ScreenCustomizationLayer");
+                fmGetElementMethod = layerCls.getMethod("getElementByInstanceIdentifier", String.class);
+                Class<?> elemCls = Class.forName("de.keksuccino.fancymenu.customization.element.AbstractElement");
+                fmAbsXMethod = elemCls.getMethod("getAbsoluteX");
+                fmAbsYMethod = elemCls.getMethod("getAbsoluteY");
+                fmAbsWMethod = elemCls.getMethod("getAbsoluteWidth");
+                fmAbsHMethod = elemCls.getMethod("getAbsoluteHeight");
+            }
+            if (fmGetLayerMethod != null && fmGetElementMethod != null) {
+                Object layer = fmGetLayerMethod.invoke(null, screen);
+                if (layer != null) {
+                    Object elem = fmGetElementMethod.invoke(layer, "nest-title-join-button-0001");
+                    if (elem != null) {
+                        int x = ((Number) fmAbsXMethod.invoke(elem)).intValue();
+                        int y = ((Number) fmAbsYMethod.invoke(elem)).intValue();
+                        int w = ((Number) fmAbsWMethod.invoke(elem)).intValue();
+                        int h = ((Number) fmAbsHMethod.invoke(elem)).intValue();
+                        if (w > 20 && h > 10) return new int[]{x, y, w, h};
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 2. Fallback scan across Screen widgets
+        AbstractWidget bestWide = null;
+        for (var r : screen.renderables) {
+            if (r instanceof AbstractWidget w && w.visible) {
+                if (w.getMessage().getString().contains("Join The Nest")) {
+                    return new int[]{w.getX(), w.getY(), w.getWidth(), w.getHeight()};
+                }
+                if (w.getWidth() >= 180 && w.getHeight() >= 18 && w.getHeight() <= 30) {
+                    if (bestWide == null || w.getY() < bestWide.getY()) bestWide = w;
+                }
+            }
+        }
+        if (bestWide != null) {
+            return new int[]{bestWide.getX(), bestWide.getY(), bestWide.getWidth(), bestWide.getHeight()};
+        }
+        // 3. Layout-matched fallback matching the_nest_title_screen.txt (mid-centered x=0, y=21, w=200, h=22)
+        return new int[]{screen.width / 2 - 100, screen.height / 2 + 21 - 11, 200, 22};
+    }
+
+    private static void fillCircle(GuiGraphicsExtractor g, int cx, int cy, int r, int argb) {
+        for (int dy = -r; dy <= r; dy++) {
+            int span = (int) Math.floor(Math.sqrt((double) r * r - (double) dy * dy + 0.35));
+            g.fill(cx - span, cy + dy, cx + span + 1, cy + dy + 1, argb);
+        }
+    }
+
     private static void onRenderTitleScreen(ScreenEvent.Render.Post event) {
         if (!(event.getScreen() instanceof TitleScreen screen)) return;
         triggerPingAsync();
         Minecraft mc = Minecraft.getInstance();
-        AbstractWidget joinBtn = null;
-        for (var r : screen.renderables) {
-            if (r instanceof AbstractWidget w && w.visible) {
-                String txt = w.getMessage().getString();
-                if (txt.contains("Join The Nest")) {
-                    joinBtn = w;
-                    break;
-                }
-            }
-        }
-        if (joinBtn == null) return;
+        int[] bounds = findJoinButtonBounds(screen);
+        int jx = bounds[0], jy = bounds[1], jw = bounds[2], jh = bounds[3];
+
+        // Position a clean small circle right next to the "Join The Nest" label inside the button
+        int labelW = mc.font.width("Join The Nest");
+        int cx = Math.min(jx + jw - 11, jx + jw / 2 + labelW / 2 + 10);
+        int cy = jy + jh / 2;
 
         int st = serverStatus;
-        String label = switch (st) {
-            case 1 -> "Online (" + onlinePlayers + "/" + maxPlayers + ")";
-            case 2 -> "Starting...";
-            case 3 -> "Offline";
-            default -> "Checking...";
-        };
-        int dotCol = switch (st) {
-            case 1 -> 0xFF5BD178;
-            case 2 -> 0xFFE09F3E;
-            case 3 -> 0xFFE06C60;
-            default -> 0xFFA89682;
-        };
-        int borderCol = (dotCol & 0x00FFFFFF) | 0x99000000;
-
         GuiGraphicsExtractor g = event.getGuiGraphics();
-        int bw = mc.font.width(label) + 18;
-        int bh = 18;
-        int bx = joinBtn.getX() + joinBtn.getWidth() + 6;
-        int by = joinBtn.getY() + (joinBtn.getHeight() - bh) / 2;
-        if (bx + bw > screen.width - 4) {
-            bx = Math.max(4, joinBtn.getX() + joinBtn.getWidth() - bw);
-            by = Math.max(4, joinBtn.getY() - bh - 3);
+
+        if (st == 1) {
+            // Online: smooth breathing green pulse + bright emerald core circle
+            double phase = (Math.sin(System.currentTimeMillis() / 220.0) + 1.0) * 0.5;
+            int pulseR = 4 + (int) Math.round(phase * 3.0);
+            int pulseAlpha = (int) Math.round(95 - phase * 65);
+            fillCircle(g, cx, cy, pulseR, (pulseAlpha << 24) | 0x3CE878);
+            fillCircle(g, cx, cy, 4, 0xFF176632);
+            fillCircle(g, cx, cy, 3, 0xFF4ADE80);
+        } else if (st == 2) {
+            // Starting: gentle amber pulse
+            double phase = (Math.sin(System.currentTimeMillis() / 260.0) + 1.0) * 0.5;
+            int pulseAlpha = (int) Math.round(45 + phase * 55);
+            fillCircle(g, cx, cy, 5, (pulseAlpha << 24) | 0xE09F3E);
+            fillCircle(g, cx, cy, 4, 0xFF7A4D10);
+            fillCircle(g, cx, cy, 3, 0xFFE09F3E);
+        } else {
+            // Offline (or initial check <1s): clean small red circle (no pulse)
+            int rim = st == 0 ? 0xFF4A423A : 0xFF7D1F1F;
+            int core = st == 0 ? 0xFF9C8B7A : 0xFFE84848;
+            fillCircle(g, cx, cy, 4, rim);
+            fillCircle(g, cx, cy, 3, core);
         }
 
-        g.fill(bx, by, bx + bw, by + bh, 0xDD16110D);
-        g.fill(bx, by, bx + bw, by + 1, borderCol);
-        g.fill(bx, by + bh - 1, bx + bw, by + bh, borderCol);
-        g.fill(bx, by, bx + 1, by + bh, borderCol);
-        g.fill(bx + bw - 1, by, bx + bw, by + bh, borderCol);
-
-        g.fill(bx + 6, by + 7, bx + 10, by + 11, dotCol);
-        g.text(mc.font, label, bx + 14, by + 5, 0xFFF5ECE0, false);
+        // Optional clean hover label if cursor rests over the dot
+        int mx = event.getMouseX();
+        int my = event.getMouseY();
+        if (Math.abs(mx - cx) <= 7 && Math.abs(my - cy) <= 7) {
+            String tip = switch (st) {
+                case 1 -> "Online (" + onlinePlayers + "/" + maxPlayers + ")";
+                case 2 -> "Server Starting...";
+                case 3 -> "Server Offline";
+                default -> "Checking Server...";
+            };
+            int tw = mc.font.width(tip) + 10;
+            int tx = Math.min(screen.width - tw - 4, cx + 8);
+            int ty = Math.max(4, cy - 16);
+            g.fill(tx, ty, tx + tw, ty + 14, 0xE816110D);
+            g.text(mc.font, tip, tx + 5, ty + 3, 0xFFF5ECE0, false);
+        }
     }
 
     private static void onOpenPayload(OpenTxAdminPayload payload) {
