@@ -1668,7 +1668,6 @@ class NestLauncher:
             self._ping_busy = True
             targets = [
                 self.cfg.get("server_address", ""),
-                "46.102.16.196:25565",
                 "192.168.1.167:25565",
             ]
             def _run() -> None:

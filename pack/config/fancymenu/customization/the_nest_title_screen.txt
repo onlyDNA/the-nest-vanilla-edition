@@ -597,7 +597,7 @@ element {
 
 element {
   button_element_executable_block_identifier = nest-join-btn-block-0001
-  [executable_action_instance:nest-join-btn-act-0001][action_type:joinserver] = 46.102.16.196:25565
+  [executable_action_instance:nest-join-btn-act-0001][action_type:joinserver] = 192.168.1.167:25565
   [executable_block:nest-join-btn-block-0001][type:generic] = [executables:nest-join-btn-act-0001;]
   backgroundnormal = [source:local]config/fancymenu/assets/btn_normal.png
   backgroundhovered = [source:local]config/fancymenu/assets/btn_hover.png

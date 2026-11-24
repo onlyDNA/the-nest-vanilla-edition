@@ -2394,7 +2394,6 @@ public final class TxAdminClient {
                 }
             }
         } catch (Throwable ignored) {}
-        out.add("46.102.16.196:25565");
         out.add("192.168.1.167:25565");
         cachedTargets = new ArrayList<>(out);
         return cachedTargets;

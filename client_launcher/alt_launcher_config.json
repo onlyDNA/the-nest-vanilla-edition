@@ -1,7 +1,7 @@
 {
   "pack_name": "The Nest Vanilla Edition — Alt Test Client",
   "pack_version": "1.0.0",
-  "launcher_version": "1.0.2",
+  "launcher_version": "1.0.3",
   "alt_mode": true,
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Alt%20Launcher.exe",
   "mc_version": "26.3",
@@ -13,5 +13,5 @@
   "manifest_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/pack-manifest.json",
   "files_base_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/pack",
   "default_ram_gb": 4,
-  "server_address": "46.102.16.196:25565"
+  "server_address": "192.168.1.167:25565"
 }
