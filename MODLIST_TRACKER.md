@@ -171,6 +171,12 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **Better Nether Portals** | Portal Overhaul | `[BOTH]` | `NeoForge` | **Installed** (`BetterNetherPortals-26.3.jar`). Adds `flat_nether_portal` & `portal_obsidian`; verify visuals with ImmersiveVFX. |
 | **More Frogs** | Frog Variants / Spawn | `[BOTH]` | `NeoForge` | **Installed** (`morefrogs-neoforge-26.3-1.26.10.1.jar`). Custom frog entities + 6 blocks; uses Almanac's newer `DungeonConfig 1.26.11.1`. |
 | **More Berry Uses** | Food Items | `[BOTH]` | `NeoForge` | **Installed** (`moreberryuses-2.0.1-for-neoforge-26.3.jar`). Adds sweet-berry foods. |
+| **Croptopia** | Farming & Foods | `[BOTH]` | `NeoForge` | **Installed** (`croptopia-neoforge-26.3-4.3.3.jar`). Custom crops, fruit trees & foods; requires **EpheroLib**. |
+| **Advanced Chimneys** | Decorative & Smoke Blocks | `[BOTH]` | `NeoForge` | **Installed** (`adchimneys-26.3.0.2-neoforge-build.0152.jar`). Chimneys & smoke physics; requires **ForgeEndertech**. |
+| **Better Archeology** | Archeology & Structures | `[BOTH]` | `NeoForge` | **Installed** (`betterarcheology-neoforge-26.3-1.3.9.jar`). Archeology sites, artifacts & fossils; requires **Architectury API** + **Resourceful Config**. |
+| **Incendium** | Nether Overhaul | `[BOTH]` | `NeoForge` | **Installed** (`Incendium_26.3_v5.5.4+26.3.jar`). Stardust Labs Nether biomes, structures & items (pairs with Terralith/Nullscape). |
+| **Simple Hats** | Cosmetic Hats | `[BOTH]` | `NeoForge` | **Installed** (`simplehats-neoforge-26.3-0.4.1.jar`). Craftable/loot cosmetic hats (`curios`/`trinkets` optional). |
+| **Additional Banners** | Decorative Banners | `[BOTH]` | `NeoForge` | **Installed** (`AdditionalBanners-neoforge-MC26.3-26.3.0.1.jar`). Extra banner patterns; requires **Bookshelf**. |
 | **More Axolotl Variants (Removed)** | Mob Variants | — | `NeoForge` | **Removed** (`mavapi-neoforge-2.4.0+26.3.jar`, `mavm-neoforge-2.2.0+26.3.jar`). Crashed NeoForge `26.3.0.103` on missing `DataPackRegistryEvent$NewRegistry`. |
 | **Emotecraft (Removed)** | Emotes | — | `NeoForge` | **Removed** (`emotecraft-for-MC26.3-3.5.0-b.build.179.jar`). Threw `NullPointerException` (`ClientNetworkImpl.isServerChannelOpen` -> `stopRelayedEmotes`) on client join and auth errors; `Punchy! Moves` + `Fluid & Foolish` already cover player animations/emotes. |
 
@@ -200,6 +206,7 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **Inventory Essentials** | Inventory Click QoL | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`inventoryessentials-neoforge-26.3-26.3.0.5.jar`). |
 | **Cut Through** | Attack Through Passable Blocks | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`cutthrough-v26.3.0-mc26.3.x+neoforge.jar`). |
 | **Timber** | Tree Felling | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`Timber-1.3.5-forge.jar`). |
+| **Crafting Tweaks** | Crafting Grid QoL | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`craftingtweaks-neoforge-26.3-26.3.0.2.jar`). Rotate, balance & clear crafting grids; requires **Balm**. |
 | **Ping Wheel** | Multiplayer Pings | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`Ping-Wheel-1.12.2-neoforge-26.3.jar`). |
 | **LetMeDespawn** | Item-Holding Mob Despawn Fix | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`letmedespawn-neoforge-26.3-1.26.11.1.jar`). Prevents mob cap bloat from mobs picking up items. |
 
@@ -218,6 +225,10 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **Legendary Tooltips** | Bordered Item Tooltips | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`LegendaryTooltips-26.3-neoforge-1.6.3.jar`). |
 | **Not Enough Recipe Book (NERB)** | Recipe Book Remover (JEI) | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`nerb-neoforge-0.6.2-26.3.jar`). |
 | **Screenshot Manager** | Screenshot Gallery UI | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`screenshotmanager-0.2.0-26.3.jar`). |
+| **Tool Stats** | Tool Tooltip Stats | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`ToolStats-neoforge-MC26.3-26.3.0.1.jar`). Shows harvest tier, mining speed & durability; requires **PrickleMC**. |
+| **Highlight** | Custom Block Outlines | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`hightlight-26.3-4.3.0.jar`). Accurate block selection outlines; requires **Resourceful Lib**. |
+| **Wavey Capes** | Cape Physics | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`waveycapes-neoforge-1.11.3-mc26.3.jar`). Smooth cloth-physics cape rendering. |
+| **Chat Animation [Smooth Chat]** | Chat UI Animation | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`chatanimation-neoforge-1.3.5+mc26.3.jar`). Smooth slide/fade chat message animation. |
 
 ### Shared Libraries & Dependencies
 
@@ -231,6 +242,10 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **CreativeCore** | Shared Library | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`CreativeCore_NEOFORGE_v2.14.25_mc26.3.jar`). |
 | **Cryonic Config** | Config Library | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`cryonicconfig-neoforge-1.0.0+mc26.3.jar`). |
 | **CTM Reborn (Athena)** | Connected Textures Lib | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`ctm-reborn-neoforge-4.9.2.jar`). |
+| **EpheroLib** | Library (Croptopia) | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`epherolib-neoforge-26.3-1.3.0.jar`). Required dependency for Croptopia. |
+| **ForgeEndertech** | Library (AdChimneys) | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`forgeendertech-26.3.0.1-neoforge-build.0125.jar`). Required dependency for Advanced Chimneys. |
+| **Resourceful Config** | Config Library (Better Archeology) | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`ResourcefulConfig-6.0.2.jar`). Required dependency for Better Archeology. |
+| **Resourceful Lib** | Library (Highlight) | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`ResourcefulLib-6.0.1.jar`). Required dependency for Highlight. |
 | **Fusion** | Connected/Emissive Textures Lib | `[CLIENT]` | `NeoForge` | `CF Manifest` | **Installed** (`fusion-1.3.16a-neoforge-mc26.3.jar`). |
 | **Fzzy Config** | Config Library | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`fzzy_config-0.7.7+fix3+26.3+neoforge.jar`). |
 | **GeckoLib 5** | Animation Engine | `[BOTH]` | `NeoForge` | `CF Manifest` | **Installed** (`geckolib-neoforge-26.3-5.5.7.jar`). |
