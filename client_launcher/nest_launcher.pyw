@@ -1668,6 +1668,7 @@ class NestLauncher:
             self._ping_busy = True
             targets = [
                 self.cfg.get("server_address", ""),
+                "thenestmc.duckdns.org:25565",
                 "192.168.1.167:25565",
             ]
             def _run() -> None:

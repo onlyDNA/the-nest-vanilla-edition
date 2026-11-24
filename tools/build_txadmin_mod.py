@@ -2394,6 +2394,7 @@ public final class TxAdminClient {
                 }
             }
         } catch (Throwable ignored) {}
+        out.add("thenestmc.duckdns.org:25565");
         out.add("192.168.1.167:25565");
         cachedTargets = new ArrayList<>(out);
         return cachedTargets;
