@@ -1379,10 +1379,11 @@ class NestLauncher:
         self._debounce_id: str | None = None
         self._lookup_seq = 0
         self._last_looked_up = ""
+        self._ip_visible = False
 
         self.root.title(self.cfg.get("pack_name", "The Nest Vanilla Edition"))
         dpi_scale = max(1.0, self.root.winfo_fpixels("1i") / 96.0)
-        self.root.geometry(f"{int(520 * dpi_scale)}x{int(430 * dpi_scale)}")
+        self.root.geometry(f"{int(520 * dpi_scale)}x{int(488 * dpi_scale)}")
         self.root.resizable(False, False)
         self.root.configure(bg=BG)
 
@@ -1615,6 +1616,29 @@ class NestLauncher:
         )
         self.path_lbl.pack(fill="x", pady=(4, 0))
 
+        # 3b. Server IP Card (hidden by default with Show/Hide toggle)
+        srv = tk.Frame(self.root, bg=SURFACE, highlightbackground=BORDER, highlightthickness=1, padx=14, pady=8)
+        srv.pack(fill="x", padx=24, pady=(0, 10))
+
+        srv_top = tk.Frame(srv, bg=SURFACE)
+        srv_top.pack(fill="x")
+        tk.Label(srv_top, text="SERVER ADDRESS", font=("Segoe UI", 7, "bold"), bg=SURFACE, fg=MUTED).pack(side="left")
+
+        self.copy_ip_btn = make_button(srv_top, "Copy", SURFACE_ALT, "#3a2d21", TEXT, self._copy_server_ip, 8, 2, 8)
+        self.copy_ip_btn.pack(side="right")
+        self.toggle_ip_btn = make_button(srv_top, "Show IP", SURFACE_ALT, "#3a2d21", ACCENT, self._toggle_server_ip, 8, 2, 8)
+        self.toggle_ip_btn.pack(side="right", padx=(0, 6))
+
+        self.ip_lbl = tk.Label(
+            srv,
+            text=self._formatted_server_ip(),
+            font=("Cascadia Mono", 9, "bold"),
+            bg=SURFACE,
+            fg=MUTED,
+            anchor="w",
+        )
+        self.ip_lbl.pack(fill="x", pady=(3, 0))
+
         # 4. Compact Settings Strip
         opts = tk.Frame(self.root, bg=BG, padx=24, pady=2)
         opts.pack(fill="x")
@@ -1663,13 +1687,48 @@ class NestLauncher:
     def _safe_ui(self, fn) -> None:
         self.ui_queue.put(fn)
 
+    def _current_server_ip(self) -> str:
+        return (self.cfg.get("server_address") or "46.102.16.196:25565").strip()
+
+    def _formatted_server_ip(self) -> str:
+        addr = self._current_server_ip()
+        if self._ip_visible:
+            return addr
+        if ":" in addr:
+            host, port = addr.rsplit(":", 1)
+            return f"{'•' * max(8, len(host))}:{port}"
+        return "•" * max(12, len(addr))
+
+    def _refresh_ip_display(self) -> None:
+        if hasattr(self, "ip_lbl"):
+            self.ip_lbl.configure(
+                text=self._formatted_server_ip(),
+                fg=ACCENT if self._ip_visible else MUTED,
+            )
+        if hasattr(self, "toggle_ip_btn"):
+            self.toggle_ip_btn.configure(text="Hide IP" if self._ip_visible else "Show IP")
+
+    def _toggle_server_ip(self) -> None:
+        self._ip_visible = not self._ip_visible
+        self._refresh_ip_display()
+
+    def _copy_server_ip(self) -> None:
+        addr = self._current_server_ip()
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(addr)
+            self.root.update()
+            self._set_status("Server IP copied to clipboard.", OK_GREEN)
+        except Exception:
+            pass
+
     def _schedule_server_ping(self) -> None:
         if not self._ping_busy:
             self._ping_busy = True
             targets = [
                 self.cfg.get("server_address", ""),
-                "25.20.236.131:25565",
-                "192.168.1.77:25565",
+                "46.102.16.196:25565",
+                "192.168.1.167:25565",
             ]
             def _run() -> None:
                 try:
@@ -2092,6 +2151,7 @@ class NestLauncher:
 
         if manifest.get("server_address"):
             self.cfg["server_address"] = manifest["server_address"]
+            self._safe_ui(self._refresh_ip_display)
 
         ver = manifest.get("pack_version", self.cfg.get("pack_version", "1.0.0"))
         self._safe_ui(lambda: self.ver_lbl.configure(
@@ -2112,11 +2172,16 @@ class NestLauncher:
                     for fn in fnames:
                         full = os.path.join(r, fn)
                         rel = os.path.relpath(full, game_dir).replace("\\", "/")
-                        if rel not in expected and mdir in ("mods", "resourcepacks") and not fn.lower().startswith("nest_txadmin"):
+                        if fn.lower().startswith("talking-heads"):
+                            os.remove(full)
+                            continue
+                        if rel not in expected and mdir in ("mods", "resourcepacks") and not fn.lower().startswith("nest_"):
                             os.remove(full)
 
             to_download: list[tuple[str, str, str]] = []
             for rel, meta in expected.items():
+                if os.path.basename(rel).lower().startswith("talking-heads"):
+                    continue
                 dest = os.path.join(game_dir, rel.replace("/", os.sep))
                 want_hash = meta.get("sha256")
                 if not os.path.exists(dest) or (want_hash and sha256_file(dest) != want_hash):
