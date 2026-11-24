@@ -1,7 +1,7 @@
 {
   "pack_name": "The Nest Vanilla Edition — Alt Test Client",
   "pack_version": "1.0.0",
-  "launcher_version": "1.0.1",
+  "launcher_version": "1.0.2",
   "alt_mode": true,
   "launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Alt%20Launcher.exe",
   "mc_version": "26.3",
