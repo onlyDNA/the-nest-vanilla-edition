@@ -178,7 +178,7 @@ Use this tracker to manage every mod in **The Nest Vanilla edition**, keep Clien
 | **Simple Hats** | Cosmetic Hats | `[BOTH]` | `NeoForge` | **Installed** (`simplehats-neoforge-26.3-0.4.1.jar`). Craftable/loot cosmetic hats (`curios`/`trinkets` optional). |
 | **Additional Banners** | Decorative Banners | `[BOTH]` | `NeoForge` | **Installed** (`AdditionalBanners-neoforge-MC26.3-26.3.0.1.jar`). Extra banner patterns; requires **Bookshelf**. |
 | **More Axolotl Variants (Removed)** | Mob Variants | — | `NeoForge` | **Removed** (`mavapi-neoforge-2.4.0+26.3.jar`, `mavm-neoforge-2.2.0+26.3.jar`). Crashed NeoForge `26.3.0.103` on missing `DataPackRegistryEvent$NewRegistry`. |
-| **Emotecraft (Removed)** | Emotes | — | `NeoForge` | **Removed** (`emotecraft-for-MC26.3-3.5.0-b.build.179.jar`). Threw `NullPointerException` (`ClientNetworkImpl.isServerChannelOpen` -> `stopRelayedEmotes`) on client join and auth errors; `Punchy! Moves` + `Fluid & Foolish` already cover player animations/emotes. |
+| **Emotecraft (Patched)** | Player Emotes | `[BOTH]` | `NeoForge` | **Installed & Patched (`overrides/mods/`)** (`emotecraft-for-MC26.3-3.5.0-b.build.179.jar`). Patched `ClientNetworkImpl.isServerChannelOpen` (`null`-safe `getConnection()` check) to fix disconnect/auth-error `NullPointerException`; requires `PlayerAnimationLib` (already installed); fast-choose wheel bound to `Mouse 4` (`Default Options`). |
 
 ---
 

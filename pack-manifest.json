@@ -8,7 +8,7 @@
   "alt_launcher_sha256": "76aca656110a63908f30a07c66c07b25a800b8acb68e2521e028d88b8592cd4c",
   "alt_launcher_url": "https://raw.githubusercontent.com/onlyDNA/the-nest-vanilla-edition/main/release/The%20Nest%20Alt%20Launcher.exe",
   "server_address": "thenestmc.duckdns.org:25565",
-  "generated_at": "2026-11-24T17:29:14Z",
+  "generated_at": "2026-11-25T17:51:14Z",
   "mc_version": "26.3",
   "neoforge_version": "26.3.0.103",
   "asset_index": "34",
@@ -18,8 +18,8 @@
     "resourcepacks",
     "defaultconfigs"
   ],
-  "total_files": 491,
-  "total_bytes": 476707242,
+  "total_files": 492,
+  "total_bytes": 478959315,
   "files": {
     "config/MouseTweaks.cfg": {
       "sha256": "4069ce1a439d8c37453c1b1e9f2037e0942674c7e48723a39b37eab245792ad4",
@@ -1324,6 +1324,10 @@
     "mods/elytratrims-neoforge-4.9.3-26.3.jar": {
       "sha256": "7b8a8b317da803fc850fb9e55127610b12d534837bab6b86972dd3eceece4a4c",
       "size": 4222996
+    },
+    "mods/emotecraft-for-MC26.3-3.5.0-b.build.179.jar": {
+      "sha256": "07b1a42fc45c660bca92c74b8bcb4c5b017df8682bb4a3f32419753466b0e458",
+      "size": 2252073
     },
     "mods/entity_model_features-3.3.12-26.3-neoforge.jar": {
       "sha256": "1e3ca8fb77599d1286e9ba5c6a0d7ec131f2a38b9ce0d42376f97ad2ec2e3f70",
